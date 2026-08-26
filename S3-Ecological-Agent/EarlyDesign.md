@@ -102,7 +102,7 @@ The MVP must:
 - estimate a geographic and optional temporal support score;
 - rerank candidates with a transparent, calibrated soft-fusion method;
 - return evidence, uncertainty, missing-data flags, and a review-oriented risk state;
-- run without live APIs by using recorded fixtures for tests;
+- run end to end without any live API, credential, or network access by using local snapshots, synthetic fixtures, and test doubles;
 - support spatial holdout evaluation;
 - expose enough logging to reproduce every result.
 
@@ -135,6 +135,26 @@ Do not make the first implementation responsible for:
 - using a general-purpose LLM as the numeric ecological model;
 - treating suitability, occurrence support, or visual similarity as a true incursion probability without labelled calibration data.
 
+### 6.4 Offline-first implementation and deferred APIs
+
+Live external APIs are **not required for the current prototype**. The project owner may provide API details, credentials, approved endpoints, quotas, or datasets later. The builder must continue now by implementing the S3 code and must not block on GBIF, ALA, EcoCommons, iNaturalist, or another remote service.
+
+Current implementation requirements:
+
+- define the complete provider interfaces and configuration schemas now;
+- implement an in-memory provider and a local-file/snapshot provider for development and tests;
+- create small synthetic or legally reusable fixtures that exercise normal, empty, malformed, duplicate, low-quality, timeout-equivalent, and provider-unavailable cases;
+- make fixture or local-snapshot mode the default development and demonstration mode;
+- place provider selection behind dependency injection or a factory so a live adapter can be added later without changing taxonomy, cleaning, fusion, risk, evidence, or API layers;
+- allow live-provider configuration fields to remain unset and return a clear `provider_not_configured` status rather than failing startup;
+- do not request, invent, hard-code, commit, or log API keys, tokens, account details, or private endpoints;
+- document the expected authentication fields and endpoint settings using empty examples only;
+- retain representative raw-response fixture shapes and provenance fields so later live responses can be mapped into the existing domain schema;
+- mark unimplemented network adapters explicitly as deferred integration work, not as completed providers;
+- ensure every automated test and the main prototype demo succeed with networking disabled.
+
+When API access is provided later, the integration task should be limited to implementing and validating the relevant adapter, mapping remote responses to the existing domain model, adding optional live tests, and recording rate-limit, licence, caching, retry, and credential-handling behavior.
+
 ## 7. Observe-Reason-Act-Learn Loop
 
 S3 should implement the decision loop described in the Week 4 design.
@@ -160,7 +180,7 @@ Create a short internal plan based on available evidence:
 1. normalize the observation and candidate probabilities;
 2. resolve names and synonyms;
 3. choose relevant occurrence sources and geographic bounds;
-4. query or load cached ecological records;
+4. load ecological records from the configured fixture, local snapshot, cache, or later live provider through the same interface;
 5. evaluate record quality and spatial support;
 6. optionally estimate environmental suitability;
 7. compare visual and ecological evidence;
@@ -183,6 +203,8 @@ flag_out_of_range_or_unknown(candidate_scores, evidence_quality, thresholds)
 ```
 
 Tool calls require timeouts, bounded retries, caching, and structured errors. A failed external service must degrade to an evidence-unavailable result instead of crashing the full workflow.
+
+For the current prototype, these tool functions are contracts and callable interfaces. They must have fixture-backed or local implementations. Network-backed implementations may remain unconfigured or explicitly deferred until the project owner provides the required API access.
 
 ### 7.4 Learn
 
@@ -335,7 +357,7 @@ Never discard raw identifiers when producing a cleaned table.
 
 ### 11.2 Occurrence retrieval
 
-Start with bounded genus-level queries. Save query parameters and raw responses before transforming them. Prefer batch downloads for large GBIF or iNaturalist-derived datasets and normal API calls only for bounded interactive lookups.
+For the current prototype, start with a small genus-level local snapshot or synthetic fixture. Save the intended query parameters, source name, fixture version, and representative raw response before transforming it. The same provider interface must later support bounded live queries. After API access is supplied, prefer batch downloads for large GBIF or iNaturalist-derived datasets and normal API calls only for bounded interactive lookups.
 
 ### 11.3 Minimum cleaning checks
 
@@ -398,7 +420,7 @@ Requirements:
 
 The following resources may be used. The builder must read each licence and terms before downloading or redistributing data.
 
-### 13.1 P0 - required for the first prototype
+### 13.1 P0 - target sources for the first prototype; live access may be deferred
 
 | Resource | Role | How to use it | Do not use it as |
 |---|---|---|---|
@@ -507,10 +529,71 @@ Architecture requirements:
 - provider-specific fields must be retained in raw evidence;
 - configuration must control source selection, bounds, quality rules, weights, and thresholds;
 - secrets must come from environment or an approved secret store and must never be committed;
+- the default prototype configuration must require no secrets and must use fixture or local-snapshot providers;
 - tests must not depend on live APIs by default;
 - logs must avoid unnecessary precise-location disclosure;
 - model and data artefacts must not be committed if their licences or size make that inappropriate;
 - use data cards and model cards for all material snapshots and trained models.
+
+### 16.1 Code readability, maintainability, and extensibility
+
+These are hard requirements for the prototype, not optional cleanup work. Code that produces the expected output but is difficult to understand, test, modify, or extend does not satisfy this design.
+
+#### Readability
+
+- use descriptive domain names such as `occurrence_records`, `geo_support`, and `coordinate_uncertainty_m` rather than unexplained abbreviations;
+- keep functions and classes focused on one responsibility and avoid deeply nested control flow;
+- separate data retrieval, validation, cleaning, scoring, risk classification, and presentation instead of combining them in one workflow function;
+- add type hints to public functions, service boundaries, schemas, adapter methods, and non-trivial internal functions;
+- use validated domain models instead of passing unstructured dictionaries through the core logic;
+- use consistent terminology from this document for risk states, evidence quality, taxon identity, and uncertainty;
+- avoid duplicated transformations or scoring logic; extract shared behavior only when its responsibility is clear;
+- prefer straightforward code over clever or compressed expressions;
+- include units in names or schemas where ambiguity is possible, for example metres, degrees, UTC timestamps, and probabilities.
+
+#### Maintainability
+
+- keep ecological domain logic independent from HTTP, CLI, database, and provider SDK code;
+- isolate each remote provider behind an adapter and translate provider failures into typed S3 errors;
+- keep thresholds, weights, geographic bounds, quality filters, and retry settings in versioned configuration rather than magic numbers;
+- use explicit dependency injection or factories so tests can replace live providers, caches, clocks, and models with fixtures;
+- use structured logging with analysis IDs and safe context, while avoiding unnecessary precise-location disclosure;
+- pin or lock direct dependencies and document why each material dependency is required;
+- provide one documented developer workflow, such as project scripts or equivalent commands, for formatting, linting, type checking, testing, and running the fixture demo;
+- keep architectural decisions that affect interfaces, data meaning, modelling assumptions, or dependencies in `docs/decisions/`;
+- delete dead code and stale compatibility paths instead of leaving multiple undocumented implementations;
+- do not silence type, lint, or test failures without a local explanation and a documented follow-up.
+
+#### Extensibility
+
+- define small interfaces or Python `Protocol`/abstract base classes for taxonomy providers, occurrence providers, geographic-prior models, suitability models, caches, and risk policies;
+- adding a new occurrence provider should normally require a new adapter and configuration entry, not changes to fusion or risk logic;
+- adding a new prior or suitability model should preserve the same versioned input/output contract and component-score semantics;
+- keep provider-specific fields in raw evidence, but do not leak provider-specific response objects into domain logic;
+- version public schemas and document backward-incompatible changes;
+- make supported taxa, data sources, scoring components, and thresholds configuration-driven where scientifically valid;
+- document extension points with one minimal example or test double;
+- avoid speculative generalisation: introduce an abstraction only when it protects a known boundary or supports a planned alternative.
+
+#### Comments and documentation inside the code
+
+- add concise comments or docstrings where they explain **why** a choice exists, not merely what the next line does;
+- comment ecological assumptions, presence-only limitations, background-sampling choices, coordinate-quality rules, score transformations, threshold precedence, extrapolation checks, and non-obvious edge cases;
+- document public classes, functions, schemas, adapters, and configuration fields with their inputs, outputs, units, failure modes, and important side effects;
+- place a short rationale next to any unavoidable workaround, compatibility branch, or non-obvious performance optimisation;
+- do not over-comment obvious assignments or repeat the code in prose;
+- update or remove comments when behavior changes; incorrect comments are defects;
+- use actionable TODOs that describe the missing work and its reason; do not use vague TODOs as permanent placeholders.
+
+#### Code-quality gates
+
+The selected toolchain may follow repository standards. For a new Python implementation, `ruff` or an equivalent formatter/linter, `pyright` or `mypy` for static type checking, and `pytest` are recommended. The prototype must have:
+
+- no formatter, linter, type-checker, or test errors in S3-owned code;
+- meaningful unit coverage for schemas, cleaning, fusion, risk policies, and error handling, with a target of at least 80 percent line coverage for core deterministic modules;
+- tests that demonstrate a provider or model can be replaced with a fixture through its interface;
+- code review evidence that an additional occurrence provider can be added without rewriting the core decision pipeline;
+- a readable fixture-based example that a new developer or agent can run from the README without live credentials.
 
 ## 17. External Integration Contract
 
@@ -678,11 +761,14 @@ Do not commit API keys, restricted data, large raw datasets, or media without ve
 - Create the package skeleton, configuration examples, and decision log.
 - Convert the input/output contracts in this document into validated schemas.
 - Add a minimal CLI or callable function using synthetic fixtures.
+- Configure and document formatting, linting, static type checking, tests, and the fixture-demo command.
+- Add the provider/model interfaces and at least one test double before connecting a live API.
 
 ### Milestone 1 - traceable occurrence MVP
 
-- Implement taxonomy and GBIF/ALA adapters.
-- Build a small, licensed, genus-level occurrence snapshot.
+- Implement taxonomy and occurrence provider interfaces, plus in-memory and local-snapshot adapters.
+- Add explicit configuration placeholders or deferred stubs for future GBIF/ALA live adapters without requiring credentials or network access.
+- Build a small synthetic or legally reusable genus-level occurrence snapshot.
 - Implement cleaning, caching, provenance, and an occurrence-distance baseline.
 - Return evidence-bearing risk results without a learned model.
 
@@ -717,8 +803,10 @@ The first S3 agent is complete only when all of the following are true:
 - [ ] A validated request with S1 candidates, location, and optional date can be processed end to end.
 - [ ] The S1 request used by standalone tests is a fixture or schema-compatible external payload; no S1 implementation is required.
 - [ ] Taxon names are resolved with raw and accepted forms preserved.
-- [ ] At least one GBIF or ALA occurrence adapter works, and the other can be added through the same interface.
-- [ ] Live data is cached and tests run offline with fixtures.
+- [ ] In-memory and local-snapshot occurrence adapters work through the same interface intended for future GBIF/ALA adapters.
+- [ ] The prototype starts, demonstrates its full workflow, and passes tests without API credentials, live providers, or network access.
+- [ ] Unconfigured live providers return an explicit safe status and do not prevent other S3 functions from running.
+- [ ] Future GBIF/ALA integration can be added as an adapter without changing the core cleaning, fusion, risk, evidence, or public-schema logic.
 - [ ] Occurrence records retain source IDs, query details, coordinate precision, dates, licences, and cleaning flags.
 - [ ] A simple geographic baseline produces candidate support scores.
 - [ ] S1 and ecological scores are combined through documented soft fusion.
@@ -728,6 +816,11 @@ The first S3 agent is complete only when all of the following are true:
 - [ ] Calibration and OOD metrics are reported where labels permit.
 - [ ] Potential-incursion cases require review and are never presented as confirmed incursions.
 - [ ] Unit, integration, and safety tests pass without network access.
+- [ ] Formatting, linting, and static type checks pass for all S3-owned code.
+- [ ] Core deterministic modules meet the documented coverage target, or an explicit evidence-based exception is recorded.
+- [ ] Public interfaces and non-obvious ecological or scoring decisions have accurate docstrings or concise rationale comments.
+- [ ] A provider and a model can each be replaced by a fixture or test double without changing the core decision pipeline.
+- [ ] The implementation contains no unexplained magic thresholds, duplicated scoring logic, provider objects leaking into domain logic, or vague permanent TODOs.
 - [ ] A README explains setup, demo commands, configuration, data acquisition, and limitations.
 - [ ] Relevant data cards, model cards, licence notes, and experiment records exist.
 - [ ] Versioned interface schemas and examples exist for all external-module boundaries used by S3.
@@ -741,7 +834,7 @@ The builder should not block the basic fixture-based MVP on these questions, but
 1. Is genus-level TF4 coverage sufficient for the first demo, or are particular fruit-fly species required?
 2. Which Australian jurisdictions, ecoregions, crops, hosts, and surveillance programs are in scope?
 3. Will S1 provide calibrated probabilities and a stable taxonomy identifier, or only display names?
-4. What data, baseline models, and HPC resources will the project team provide?
+4. What API access, approved data snapshots, baseline models, and HPC resources will the project team provide later?
 5. Which locations are sensitive and require coordinate coarsening or access control?
 6. What operational action follows each risk state?
 7. Who is the authorised expert reviewer, and how should feedback reach S5?
