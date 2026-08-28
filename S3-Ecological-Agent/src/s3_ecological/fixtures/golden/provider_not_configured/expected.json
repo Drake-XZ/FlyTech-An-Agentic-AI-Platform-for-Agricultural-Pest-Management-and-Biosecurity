@@ -1,0 +1,9 @@
+{
+  "settings_overrides": {"occurrence_provider": "live_gbif"},
+  "expect": {
+    "description": "live_gbif is selected with no base_url/credentials. Construction must not crash; every query must return a typed provider_not_configured issue instead of raising. Taxonomy resolution (fixture-backed) still succeeds normally.",
+    "top_candidate_id": "c1",
+    "has_provider_not_configured_error": true,
+    "status_is_not_failed": true
+  }
+}

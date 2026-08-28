@@ -1,0 +1,11 @@
+{
+  "settings_overrides": {},
+  "expect": {
+    "description": "A structurally valid request with no location. No occurrence-distance calculation must run; the case must ask for location as requested_evidence rather than guessing a risk state.",
+    "top_candidate_id": "c1",
+    "status": "completed_with_warnings",
+    "risk_state": "unknown_or_insufficient_evidence",
+    "requested_evidence": ["location"],
+    "geo_support": null
+  }
+}

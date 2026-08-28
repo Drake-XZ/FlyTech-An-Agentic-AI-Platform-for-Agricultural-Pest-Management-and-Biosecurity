@@ -1,0 +1,56 @@
+{
+  "dataset_id": "golden-supported-same-location-v0.1",
+  "records": [
+    {
+      "source": "golden-fixture",
+      "source_record_id": "occ-1",
+      "dataset_id": "golden-supported-same-location-v0.1",
+      "source_url": "fixture://golden/supported_same_location/occ-1",
+      "scientific_name_raw": "Bactrocera",
+      "taxon_id": "fixture:bactrocera",
+      "latitude": 0.0,
+      "longitude": 0.0,
+      "coordinate_uncertainty_m": 50.0,
+      "event_date": "2026-01-01",
+      "basis_of_record": "synthetic_fixture",
+      "license": "CC0-1.0",
+      "is_captive_or_cultivated": false,
+      "query_parameters": {"taxon_id": "fixture:bactrocera"},
+      "snapshot_or_cache_key": "golden-supported-same-location-v0.1"
+    },
+    {
+      "source": "golden-fixture",
+      "source_record_id": "occ-2",
+      "dataset_id": "golden-supported-same-location-v0.1",
+      "source_url": "fixture://golden/supported_same_location/occ-2",
+      "scientific_name_raw": "Bactrocera",
+      "taxon_id": "fixture:bactrocera",
+      "latitude": 0.0,
+      "longitude": 0.1,
+      "coordinate_uncertainty_m": 50.0,
+      "event_date": "2026-01-02",
+      "basis_of_record": "synthetic_fixture",
+      "license": "CC0-1.0",
+      "is_captive_or_cultivated": false,
+      "query_parameters": {"taxon_id": "fixture:bactrocera"},
+      "snapshot_or_cache_key": "golden-supported-same-location-v0.1"
+    },
+    {
+      "source": "golden-fixture",
+      "source_record_id": "occ-3",
+      "dataset_id": "golden-supported-same-location-v0.1",
+      "source_url": "fixture://golden/supported_same_location/occ-3",
+      "scientific_name_raw": "Bactrocera",
+      "taxon_id": "fixture:bactrocera",
+      "latitude": 0.0,
+      "longitude": -0.1,
+      "coordinate_uncertainty_m": 50.0,
+      "event_date": "2026-01-03",
+      "basis_of_record": "synthetic_fixture",
+      "license": "CC0-1.0",
+      "is_captive_or_cultivated": false,
+      "query_parameters": {"taxon_id": "fixture:bactrocera"},
+      "snapshot_or_cache_key": "golden-supported-same-location-v0.1"
+    }
+  ]
+}

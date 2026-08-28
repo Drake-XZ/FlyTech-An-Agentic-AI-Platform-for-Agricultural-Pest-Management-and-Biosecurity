@@ -1,0 +1,11 @@
+{
+  "settings_overrides": {"incursion_rule_enabled": false},
+  "expect": {
+    "description": "Three valid records near (0, 20); haversine distance from (0, 0) is roughly 2200 km, well beyond geo_distance_scale_km=500, so geo_support is far below geo_ood_max=0.1.",
+    "top_candidate_id": "c1",
+    "geo_support_below": 0.1,
+    "risk_state": "geographic_ood",
+    "review_required": true,
+    "forbidden_risk_states": ["potential_incursion", "confirmed_incursion"]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "settings_overrides": {"occurrence_provider": "in_memory"},
+  "expect": {
+    "description": "in_memory provider with zero records: query succeeds structurally with tool status no_records for every candidate; must never be reported as species absence.",
+    "top_candidate_id": "c1",
+    "geo_support": null,
+    "status": "completed_with_warnings",
+    "risk_state": "unknown_or_insufficient_evidence"
+  }
+}

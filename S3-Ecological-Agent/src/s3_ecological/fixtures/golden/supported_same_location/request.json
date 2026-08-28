@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "observation_id": "golden-supported-same-location",
+  "source": "golden-fixture",
+  "candidate_set_complete": true,
+  "observed_at": "2026-08-01T10:00:00+00:00",
+  "location": {
+    "latitude": 0.0,
+    "longitude": 0.0,
+    "coordinate_uncertainty_m": 100.0
+  },
+  "visual_candidates": [
+    {
+      "candidate_id": "c1",
+      "name": "Bactrocera",
+      "rank": "genus",
+      "visual_probability": 1.0,
+      "model_version": "golden-v0.1"
+    }
+  ],
+  "context": null,
+  "other_agent_evidence": []
+}

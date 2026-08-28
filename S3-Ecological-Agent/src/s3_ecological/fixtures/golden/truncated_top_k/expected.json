@@ -1,0 +1,11 @@
+{
+  "settings_overrides": {},
+  "expect": {
+    "description": "candidate_set_complete=false with S1 raw probabilities 0.6 and 0.3 and omitted_probability_mass=0.1. Location is deliberately omitted so both candidates have equal (absent) ecological support: the additive geo/environment terms are then equal (both omitted) for every candidate, which softmax is invariant to, so rerank_score is driven purely by the visual_probability_raw ratio. This must not be reported as a posterior probability.",
+    "visual_probability_raw": {"c1": 0.6, "c2": 0.3},
+    "omitted_probability_mass": 0.1,
+    "rerank_score_approx": {"c1": 0.6666666666666666, "c2": 0.3333333333333333},
+    "rerank_score_tolerance": 0.0001,
+    "rerank_scores_sum_to_one_over_submitted_only": true
+  }
+}

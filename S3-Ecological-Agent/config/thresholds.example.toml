@@ -1,0 +1,23 @@
+# Example S3 numeric-threshold configuration.
+#
+# All values shown here equal the Prototype Implementation Profile v0.1
+# defaults frozen in `settings.py`. Do not change any of them without a
+# corresponding decision record under `docs/decisions/` — these numbers
+# define what "ecologically supported" vs. "geographic OOD" mean.
+
+geo_distance_scale_km = 500.0
+max_coordinate_uncertainty_m = 50000.0
+min_occurrences_for_ood = 3
+geo_supported_min = 0.5
+geo_ood_max = 0.1
+probability_sum_tolerance = 0.000001
+
+fusion_epsilon = 0.000001
+fusion_weight_geo = 1.0
+fusion_weight_environment = 0.0
+incursion_rule_enabled = false
+
+# Known centroid coordinates to flag as low-precision/placeholder localities
+# (e.g. capital-city or country-centroid fallbacks from some data sources).
+# Each entry is [latitude, longitude].
+known_centroid_coordinates = []

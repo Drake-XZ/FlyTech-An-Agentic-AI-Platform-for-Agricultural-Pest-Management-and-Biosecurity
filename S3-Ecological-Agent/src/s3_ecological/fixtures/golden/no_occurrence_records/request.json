@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "observation_id": "golden-no-occurrence-records",
+  "source": "golden-fixture",
+  "candidate_set_complete": true,
+  "observed_at": "2026-08-01T10:00:00+00:00",
+  "location": {
+    "latitude": -33.0,
+    "longitude": 151.0,
+    "coordinate_uncertainty_m": 100.0
+  },
+  "visual_candidates": [
+    {
+      "candidate_id": "c1",
+      "name": "Rhagoletis",
+      "rank": "genus",
+      "visual_probability": 1.0,
+      "model_version": "golden-v0.1"
+    }
+  ],
+  "context": null,
+  "other_agent_evidence": []
+}

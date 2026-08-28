@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "s3-ecological"
+version = "0.1.0"
+description = "FlyTech S3 Ecological Agent - offline-first ecological reasoning and evidence prototype"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary - FlyTech internal prototype" }
+authors = [{ name = "FlyTech S3" }]
+
+# Only pydantic is a hard runtime dependency (Prototype Implementation Profile v0.1,
+# section 16.1): the deterministic ecological core must run without an agent
+# framework, HTTP framework, or provider SDK installed.
+dependencies = [
+    "pydantic>=2.6,<3",
+]
+
+[project.optional-dependencies]
+agent = ["pydantic-ai>=0.0.13"]
+api = ["fastapi>=0.110", "uvicorn>=0.27"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "pyright>=1.1.370",
+]
+
+[project.scripts]
+s3-ecological = "s3_ecological.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+s3_ecological = ["fixtures/golden/**/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingImports = true

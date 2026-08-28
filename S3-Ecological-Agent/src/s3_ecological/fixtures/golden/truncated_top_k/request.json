@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0.0",
+  "observation_id": "golden-truncated-top-k",
+  "source": "golden-fixture",
+  "candidate_set_complete": false,
+  "omitted_probability_mass": 0.1,
+  "observed_at": "2026-08-01T10:00:00+00:00",
+  "location": null,
+  "visual_candidates": [
+    {
+      "candidate_id": "c1",
+      "name": "Bactrocera",
+      "rank": "genus",
+      "visual_probability": 0.6,
+      "model_version": "golden-v0.1"
+    },
+    {
+      "candidate_id": "c2",
+      "name": "Ceratitis",
+      "rank": "genus",
+      "visual_probability": 0.3,
+      "model_version": "golden-v0.1"
+    }
+  ],
+  "context": null,
+  "other_agent_evidence": []
+}

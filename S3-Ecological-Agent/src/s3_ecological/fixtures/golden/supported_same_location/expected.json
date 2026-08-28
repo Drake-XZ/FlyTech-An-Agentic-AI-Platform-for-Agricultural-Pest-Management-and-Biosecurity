@@ -1,0 +1,10 @@
+{
+  "settings_overrides": {},
+  "expect": {
+    "description": "Three valid occurrence records exactly at the observation point; nearest distance is 0 km so geo_support must be exactly 1.0.",
+    "top_candidate_id": "c1",
+    "geo_support": 1.0,
+    "risk_state": "ecologically_supported",
+    "review_required": false
+  }
+}

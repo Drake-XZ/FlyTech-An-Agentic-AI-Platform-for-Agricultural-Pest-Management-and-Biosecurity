@@ -1,0 +1,21 @@
+# Example S3 provider-selection configuration.
+#
+# Copy to a real path and pass it via `--config path/to/file.toml`, or set
+# individual fields with `S3_<FIELD_NAME>` environment variables. Precedence
+# (highest first): constructor/CLI overrides > environment variables > TOML
+# file(s) > Prototype Implementation Profile v0.1 defaults (settings.py).
+#
+# "fixture" / "in_memory" / "local_snapshot" run fully offline. "live_gbif"
+# and "live_ala" are deferred in this prototype: selecting them always
+# yields a `provider_not_configured` result (see
+# providers/occurrence_live_deferred.py) rather than a network call.
+
+taxonomy_provider = "fixture"
+
+occurrence_provider = "fixture"
+# occurrence_provider = "local_snapshot"
+# occurrence_snapshot_path = "data/raw/my_snapshot.json"
+
+# occurrence_provider = "live_gbif"
+# gbif_base_url = "https://api.gbif.org/v1"
+# gbif_api_key_env_var = "GBIF_API_KEY"
