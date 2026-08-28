@@ -505,7 +505,7 @@ a_{ij}=\sin^2\left(\frac{\Delta\phi_{ij}}{2}\right)
 $$
 
 $$
-d_{ij}=2R_E\operatorname{atan2}
+d_{ij}=2R_E\,\mathrm{atan2}
 \left(\sqrt{a_{ij}},\sqrt{1-a_{ij}}\right)
 $$
 
@@ -549,14 +549,13 @@ $$
 
 ### 4. Evidence quality
 
-$$
-Q_i=
-\begin{cases}
-\text{insufficient}, & n_i=0\\
-\text{low}, & 1\le n_i<N_o\\
-\text{medium}, & n_i\ge N_o
-\end{cases}
-$$
+Define evidence quality as the deterministic function $Q_i=f_Q(n_i;N_o)$:
+
+| First matching condition | $Q_i$ |
+|---|---|
+| $n_i=0$ | `insufficient` |
+| $1\le n_i<N_o$ | `low` |
+| $n_i\ge N_o$ | `medium` |
 
 Current value:
 
@@ -570,11 +569,14 @@ Profile v0.1 never produces `evidence_quality=high`; that value is reserved for 
 
 The combined score is:
 
+Let $A_i$ be the set of available, enabled ecological components for candidate $i$, and let $x_{ic}$ be component $c$'s score. The implemented fusion can be written as:
+
 $$
 s_i=\ln(p_i+\varepsilon)
-+\mathbf{1}[g_i\ne\varnothing]w_g\ln(g_i+\varepsilon)
-+\mathbf{1}[e_i\ne\varnothing]w_e\ln(e_i+\varepsilon)
++\sum_{c\in A_i}w_c\ln(x_{ic}+\varepsilon)
 $$
+
+For the current component set, $x_{ig}=g_i$ with weight $w_g$, and $x_{ie}=e_i$ with weight $w_e$.
 
 An unavailable component is omitted from the sum; it is never replaced by zero or one.
 
@@ -668,64 +670,46 @@ d_i^{\min}\ge-500\ln(0.1)
 \approx1151.293\ \mathrm{km}
 $$
 
-The first matching rule wins:
+The first matching rule wins. For candidate state $S_i$:
 
-$$
-S_i=
-\begin{cases}
-\text{unknown\_or\_insufficient\_evidence},
-& \neg L\lor g_i=\varnothing\lor Q_i=\text{insufficient}\\
-\text{environmental\_conflict},
-& X_i=\text{true}\\
-\text{geographic\_ood},
-& n_i\ge N_o\land g_i\le\tau_o\\
-\text{weak\_ecological\_support},
-& Q_i=\text{low}\lor(\tau_o<g_i<\tau_s)\\
-\text{ecologically\_supported},
-& g_i\ge\tau_s\\
-\text{unknown\_or\_insufficient\_evidence},
-& \text{otherwise}
-\end{cases}
-$$
+| Precedence | First matching condition | $S_i$ |
+|---:|---|---|
+| 1 | No location is available, $g_i$ is unavailable, or $Q_i$ is `insufficient` | `unknown_or_insufficient_evidence` |
+| 2 | $X_i$ is `true` | `environmental_conflict` |
+| 3 | $n_i\ge N_o$ and $g_i\le\tau_o$ | `geographic_ood` |
+| 4 | $Q_i$ is `low`, or $\tau_o<g_i<\tau_s$ | `weak_ecological_support` |
+| 5 | $g_i\ge\tau_s$ | `ecologically_supported` |
+| 6 | No earlier condition matched | `unknown_or_insufficient_evidence` |
 
 At case level a separately validated potential-incursion rule would precede environmental conflict, but `_potential_incursion_rule_fires` currently always returns `False`, and `incursion_rule_enabled=false` by default. The pipeline currently supplies `environmental_conflict=false`, so neither state is produced by the present Profile v0.1 execution path.
 
 ### 9. Expert-review decision
 
-For a successfully processed case, the current effective rule is:
+For a successfully processed case, define three Boolean indicators:
 
 $$
-\operatorname{review}=
-\mathbf{1}\left[
-S_{\mathrm{top}}\in
-\left\{
-\text{unknown/insufficient},
-\text{geographic OOD},
-\text{environmental conflict}
-\right\}
-\lor\bigvee_i A_i
-\right]
+r=I_s\lor I_a\lor I_f
 $$
+
+where `review_required=true` exactly when $r$ is true:
+
+| Indicator | Becomes true when |
+|---|---|
+| $I_s$ | The top state is `unknown_or_insufficient_evidence`, `geographic_ood`, `environmental_conflict`, or a future validated `potential_incursion` |
+| $I_a$ | At least one submitted candidate has ambiguous taxonomy |
+| $I_f$ | Request validation or unexpected internal processing fails |
 
 Failed validation and unexpected internal processing failure also force expert review. `weak_ecological_support`, an unavailable environmental-suitability warning, `candidate_set_complete=false`, and `omitted_probability_mass` do not currently force review.
 
 ### 10. Uncertainty level
 
-For the top reranked candidate:
+For the top reranked candidate, the first matching row determines $U$:
 
-$$
-U=
-\begin{cases}
-\text{high},
-& S_{\mathrm{top}}=\text{unknown\_or\_insufficient\_evidence}\\
-\text{medium},
-& Q_{\mathrm{top}}=\text{low}
-\lor S_{\mathrm{top}}\in
-\{\text{weak},\text{geographic OOD},\text{environmental conflict}\}\\
-\text{low},
-& \text{otherwise}
-\end{cases}
-$$
+| Precedence | First matching condition | $U$ |
+|---:|---|---|
+| 1 | The top state is `unknown_or_insufficient_evidence` | `high` |
+| 2 | The top evidence quality is `low`, or the top state is `weak_ecological_support`, `geographic_ood`, or `environmental_conflict` | `medium` |
+| 3 | No earlier condition matched | `low` |
 
 This is a deterministic Profile v0.1 heuristic, not a calibrated uncertainty model or confidence interval.
 
@@ -733,17 +717,10 @@ This is a deterministic Profile v0.1 heuristic, not a calibrated uncertainty mod
 
 For a structurally valid assessment that reaches the result builder:
 
-$$
-\operatorname{status}=
-\begin{cases}
-\text{completed\_with\_warnings},
-& \text{warnings}\ne\varnothing
-\lor\text{errors}\ne\varnothing
-\lor\text{missing evidence}\ne\varnothing\\
-\text{completed},
-& \text{otherwise}
-\end{cases}
-$$
+| First matching condition | Assessment status |
+|---|---|
+| At least one warning, error, or missing-evidence item exists | `completed_with_warnings` |
+| Otherwise | `completed` |
 
 Validation failure and unexpected internal failure use the separate statuses `failed_validation` and `failed` and force high uncertainty plus expert review.
 
