@@ -5,14 +5,6 @@
 **Last updated:** 28 August 2026<br>
 **Primary target:** A testable proof-of-concept for fruit-fly identification and biosecurity decision support
 
-## Design Change Log
-
-This log is append-only. When requirements change, add a new dated row **below** the existing rows and update `Last updated`; do not rewrite or delete earlier entries. Detailed decisions that need more context must also be recorded in `docs/decisions/`.
-
-| Date | Revision | Change |
-|---|---|---|
-| 28 August 2026 | Prototype Implementation Profile v0.1 | Confirmed prototype-only scope; selected PydanticAI as a replaceable optional agent layer; kept the ecological core runnable without an LLM or live API; froze the first implementation defaults, contracts, risk precedence, error semantics, and fixture acceptance requirements. |
-
 ## 1. Purpose of This Document
 
 This document is the implementation brief for any agent or developer building the FlyTech S3 Ecological Agent. It converts the Week 4 project material into explicit product, data, model, interface, testing, and safety requirements.
@@ -1197,3 +1189,20 @@ Until these are answered, use configuration placeholders and clearly labelled as
 ## 25. Final Instruction to Any Implementation Agent
 
 Build the smallest evidence-grounded system that can answer the first testable question. Begin with transparent data, a simple baseline, spatially honest evaluation, and safe uncertainty behavior. Do not hide ecological assumptions inside an LLM prompt, do not overclaim from presence-only records, and do not expand to large multimodal datasets until the geographic-prior MVP produces reproducible evidence of value.
+
+---
+
+## Design Change Log
+
+This section is **append-only** and must remain at the end of this file. Every future change to `EarlyDesign.md` must add a new timestamped subsection below all existing content. Existing log entries must never be edited, reordered, or deleted, except that non-semantic corrections to mathematical rendering, spelling, formatting, or broken links may be applied directly in place when they do not alter a historical requirement, decision, result, or timestamp. Update the document-level `Last updated` field when the specification changes, and create an ADR under `docs/decisions/` when a change needs additional rationale or evidence.
+
+### 2026-08-28 — Prototype Implementation Profile v0.1
+
+Confirmed prototype-only scope; selected PydanticAI as a replaceable optional agent layer; kept the ecological core runnable without an LLM or live API; froze the first implementation defaults, contracts, risk precedence, error semantics, and fixture acceptance requirements.
+
+### 2026-08-28 21:27 Australia/Sydney — Append-only documentation policy
+
+- Moved the Design Change Log from the beginning of `EarlyDesign.md` to the end so its maintenance model matches `Work.md`.
+- Preserved the original Prototype Implementation Profile v0.1 change record.
+- Established that every future update to `EarlyDesign.md` must be documented by appending a new timestamped subsection at the physical end of the file.
+- Reconfirmed that every future update to `Work.md` must likewise be recorded as a new timestamped section at the physical end of that file; existing entries must not be rewritten or deleted except for non-semantic rendering, spelling, formatting, or broken-link corrections that do not change their meaning.

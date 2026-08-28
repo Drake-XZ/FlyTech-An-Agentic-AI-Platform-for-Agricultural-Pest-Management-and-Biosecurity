@@ -1,8 +1,10 @@
 # S3 Ecological Agent — Implementation Work Log
 
 This file is **append-only**. New work is added as a new dated section at the
-end of the file; existing sections are never edited or deleted, so this file
-is always a faithful history of what was actually done and verified.
+end of the file, so this file remains a faithful history of what was done and
+verified. Non-semantic corrections to mathematical rendering, spelling,
+formatting, or broken links may be applied directly in place when they do not
+alter historical claims, decisions, results, or timestamps.
 
 ---
 
@@ -412,3 +414,378 @@ LLM/API credential was used by any of the above commands.
   this session (this Work.md entry was written immediately before staging
   and committing, so the hash could not be self-referentially included
   here).
+
+---
+
+## 2026-08-28 21:31 Australia/Sydney
+
+### Scope
+
+Documented the exact deterministic mathematical specification currently implemented by the S3 prototype, including symbol definitions, formulas, frozen Profile v0.1 parameter values, state thresholds, expert-review rules, uncertainty rules, and the engineering tests used to evaluate them. No scoring or risk logic was changed in this update.
+
+This entry also establishes the following maintenance rule:
+
+- every future update to `EarlyDesign.md` must add a new timestamped Design Change Log subsection at the physical end of that file;
+- every future update to `Work.md` must add a new timestamped work section at the physical end of this file;
+- existing historical entries must not be rewritten, reordered, or deleted.
+
+### Source-of-truth code inspected
+
+- `src/s3_ecological/occurrence/distance.py`
+- `src/s3_ecological/occurrence/cleaning.py`
+- `src/s3_ecological/priors/geo_nearest_distance.py`
+- `src/s3_ecological/fusion/soft_fusion.py`
+- `src/s3_ecological/risk/policy.py`
+- `src/s3_ecological/orchestration/pipeline.py`
+- `src/s3_ecological/orchestration/validation.py`
+- `src/s3_ecological/settings.py`
+- `config/thresholds.example.toml`
+- matching unit, integration, safety, and golden tests under `tests/`
+
+### Symbols
+
+| Symbol | Meaning |
+|---|---|
+| $O=(\phi_o,\lambda_o)$ | Observation latitude and longitude |
+| $R_{ij}=(\phi_{ij},\lambda_{ij})$ | Occurrence record $j$ for candidate taxon $i$ |
+| $R_E$ | Mean Earth radius in kilometres |
+| $V_i$ | Cleaned occurrence records usable for distance for candidate $i$ |
+| $n_i=|V_i|$ | Number of usable occurrence records for candidate $i$ |
+| $d_{ij}$ | Great-circle distance from the observation to record $j$ |
+| $d_i^{\min}$ | Nearest usable occurrence distance for candidate $i$ |
+| $D$ | Geographic exponential distance scale |
+| $g_i$ | Geographic support score for candidate $i$ |
+| $Q_i$ | Evidence-quality category for candidate $i$ |
+| $p_i$ | Raw visual probability supplied by S1 for candidate $i$ |
+| $e_i$ | Environmental-suitability score, when available |
+| $\varepsilon$ | Numerical stabiliser used inside logarithms |
+| $w_g,w_e$ | Geographic and environmental fusion weights |
+| $s_i$ | Unnormalised combined log score |
+| $q_i$ | Within-submitted-set softmax reranking score |
+| $\delta$ | Candidate probability-sum tolerance |
+| $\tau_s$ | Minimum geographic support for `ecologically_supported` |
+| $\tau_o$ | Maximum geographic support for `geographic_ood` |
+| $N_o$ | Minimum usable occurrence count required for geographic OOD |
+| $L$ | Boolean indicating whether a valid observation location is available |
+| $X_i$ | Boolean environmental-conflict flag for candidate $i$ |
+| $A_i$ | Boolean ambiguous-taxonomy flag for candidate $i$ |
+
+Latitude and longitude inputs are converted from degrees to radians before the trigonometric distance calculation.
+
+### 1. Occurrence usability
+
+A record belongs to $V_i$ only when it has valid coordinates, known coordinate uncertainty no greater than $U_{\max}$, is not a configured centroid, is not captive/cultivated, and is not an exact duplicate. Missing uncertainty excludes the record from distance scoring. Zero coordinates and implausible event dates are flagged but are not, by themselves, excluded.
+
+Current values:
+
+$$
+U_{\max}=50{,}000\ \mathrm{m}
+$$
+
+$$
+\eta_c=0.0001^\circ
+$$
+
+where $\eta_c$ is the configured-centroid matching tolerance. The default configured-centroid list is empty.
+
+### 2. Great-circle distance
+
+For each usable record:
+
+$$
+\Delta\phi_{ij}=\phi_{ij}-\phi_o,
+\qquad
+\Delta\lambda_{ij}=\lambda_{ij}-\lambda_o
+$$
+
+$$
+a_{ij}=\sin^2\left(\frac{\Delta\phi_{ij}}{2}\right)
++\cos(\phi_o)\cos(\phi_{ij})
+\sin^2\left(\frac{\Delta\lambda_{ij}}{2}\right)
+$$
+
+$$
+d_{ij}=2R_E\operatorname{atan2}
+\left(\sqrt{a_{ij}},\sqrt{1-a_{ij}}\right)
+$$
+
+Current value:
+
+$$
+R_E=6371.0088\ \mathrm{km}
+$$
+
+The nearest usable distance is:
+
+$$
+d_i^{\min}=\min_{j\in V_i}d_{ij}
+$$
+
+If $V_i=\varnothing$, the implementation returns `min_occurrence_distance_km=null`, `geo_support=null`, `evidence_quality=insufficient`, and a `no_records` warning. It does not infer species absence.
+
+### 3. Geographic support
+
+When at least one usable occurrence exists:
+
+$$
+g_i=\exp\left(-\frac{d_i^{\min}}{D}\right)
+$$
+
+Current value:
+
+$$
+D=500.0\ \mathrm{km}
+$$
+
+Examples under the current profile are:
+
+$$
+g_i(0)=1,
+\qquad
+g_i(500)=e^{-1}\approx0.367879,
+\qquad
+g_i(1000)=e^{-2}\approx0.135335
+$$
+
+### 4. Evidence quality
+
+$$
+Q_i=
+\begin{cases}
+\text{insufficient}, & n_i=0\\
+\text{low}, & 1\le n_i<N_o\\
+\text{medium}, & n_i\ge N_o
+\end{cases}
+$$
+
+Current value:
+
+$$
+N_o=3
+$$
+
+Profile v0.1 never produces `evidence_quality=high`; that value is reserved for a future validated policy.
+
+### 5. Visual/ecological soft fusion
+
+The combined score is:
+
+$$
+s_i=\ln(p_i+\varepsilon)
++\mathbf{1}[g_i\ne\varnothing]w_g\ln(g_i+\varepsilon)
++\mathbf{1}[e_i\ne\varnothing]w_e\ln(e_i+\varepsilon)
+$$
+
+An unavailable component is omitted from the sum; it is never replaced by zero or one.
+
+Current values:
+
+$$
+\varepsilon=10^{-6},
+\qquad
+w_g=1.0,
+\qquad
+w_e=0.0
+$$
+
+The current `NullSuitabilityModel` returns $e_i=\varnothing$, so the environmental term is absent in Profile v0.1.
+
+### 6. Reranking
+
+Let:
+
+$$
+m=\max_j s_j
+$$
+
+The numerically stable softmax implemented by the code is:
+
+$$
+q_i=\frac{\exp(s_i-m)}{\sum_j\exp(s_j-m)}
+$$
+
+Therefore:
+
+$$
+\sum_i q_i=1
+$$
+
+only across the submitted candidate set. The result is a within-set ranking score, not a posterior probability over all possible taxa. Candidates are sorted by descending $s_i$; exact ties are broken by original S1 order and then by stable resolved taxon identifier, falling back to candidate identifier.
+
+### 7. S1 probability validation
+
+Each submitted visual probability must satisfy:
+
+$$
+0\le p_i\le1
+$$
+
+When `candidate_set_complete=true`:
+
+$$
+\left|\sum_i p_i-1\right|\le\delta
+$$
+
+When `candidate_set_complete=false`:
+
+$$
+\sum_i p_i\le1+\delta
+$$
+
+Current value:
+
+$$
+\delta=10^{-6}
+$$
+
+`omitted_probability_mass` is validated to lie in $[0,1]$ when supplied, but it does not currently affect fusion, risk-state classification, or expert-review logic.
+
+### 8. Evidence-state thresholds and precedence
+
+Current values:
+
+$$
+\tau_s=0.5,
+\qquad
+\tau_o=0.1,
+\qquad
+N_o=3
+$$
+
+Under $D=500\ \mathrm{km}$, the support thresholds imply:
+
+$$
+g_i\ge0.5
+\iff
+d_i^{\min}\le-500\ln(0.5)
+\approx346.574\ \mathrm{km}
+$$
+
+$$
+g_i\le0.1
+\iff
+d_i^{\min}\ge-500\ln(0.1)
+\approx1151.293\ \mathrm{km}
+$$
+
+The first matching rule wins:
+
+$$
+S_i=
+\begin{cases}
+\text{unknown\_or\_insufficient\_evidence},
+& \neg L\lor g_i=\varnothing\lor Q_i=\text{insufficient}\\
+\text{environmental\_conflict},
+& X_i=\text{true}\\
+\text{geographic\_ood},
+& n_i\ge N_o\land g_i\le\tau_o\\
+\text{weak\_ecological\_support},
+& Q_i=\text{low}\lor(\tau_o<g_i<\tau_s)\\
+\text{ecologically\_supported},
+& g_i\ge\tau_s\\
+\text{unknown\_or\_insufficient\_evidence},
+& \text{otherwise}
+\end{cases}
+$$
+
+At case level a separately validated potential-incursion rule would precede environmental conflict, but `_potential_incursion_rule_fires` currently always returns `False`, and `incursion_rule_enabled=false` by default. The pipeline currently supplies `environmental_conflict=false`, so neither state is produced by the present Profile v0.1 execution path.
+
+### 9. Expert-review decision
+
+For a successfully processed case, the current effective rule is:
+
+$$
+\operatorname{review}=
+\mathbf{1}\left[
+S_{\mathrm{top}}\in
+\left\{
+\text{unknown/insufficient},
+\text{geographic OOD},
+\text{environmental conflict}
+\right\}
+\lor\bigvee_i A_i
+\right]
+$$
+
+Failed validation and unexpected internal processing failure also force expert review. `weak_ecological_support`, an unavailable environmental-suitability warning, `candidate_set_complete=false`, and `omitted_probability_mass` do not currently force review.
+
+### 10. Uncertainty level
+
+For the top reranked candidate:
+
+$$
+U=
+\begin{cases}
+\text{high},
+& S_{\mathrm{top}}=\text{unknown\_or\_insufficient\_evidence}\\
+\text{medium},
+& Q_{\mathrm{top}}=\text{low}
+\lor S_{\mathrm{top}}\in
+\{\text{weak},\text{geographic OOD},\text{environmental conflict}\}\\
+\text{low},
+& \text{otherwise}
+\end{cases}
+$$
+
+This is a deterministic Profile v0.1 heuristic, not a calibrated uncertainty model or confidence interval.
+
+### 11. Assessment processing status
+
+For a structurally valid assessment that reaches the result builder:
+
+$$
+\operatorname{status}=
+\begin{cases}
+\text{completed\_with\_warnings},
+& \text{warnings}\ne\varnothing
+\lor\text{errors}\ne\varnothing
+\lor\text{missing evidence}\ne\varnothing\\
+\text{completed},
+& \text{otherwise}
+\end{cases}
+$$
+
+Validation failure and unexpected internal failure use the separate statuses `failed_validation` and `failed` and force high uncertainty plus expert review.
+
+### Current Profile v0.1 parameter register
+
+| Symbol / setting | Current value | Meaning |
+|---|---:|---|
+| $R_E$ / Earth mean radius | `6371.0088 km` | Haversine distance radius |
+| $D$ / `geo_distance_scale_km` | `500.0 km` | Geographic exponential decay scale |
+| $U_{\max}$ / `max_coordinate_uncertainty_m` | `50000 m` | Maximum usable coordinate uncertainty |
+| $\eta_c$ / centroid match tolerance | `0.0001°` | Configured-centroid equality tolerance |
+| $N_o$ / `min_occurrences_for_ood` | `3` | Minimum usable records for OOD and medium evidence quality |
+| $\tau_s$ / `geo_supported_min` | `0.5` | Ecologically-supported threshold |
+| $\tau_o$ / `geo_ood_max` | `0.1` | Geographic-OOD maximum support threshold |
+| $\delta$ / `probability_sum_tolerance` | `0.000001` | S1 probability-sum tolerance |
+| $\varepsilon$ / `fusion_epsilon` | `0.000001` | Logarithm stabiliser |
+| $w_g$ / `fusion_weight_geo` | `1.0` | Geographic fusion weight |
+| $w_e$ / `fusion_weight_environment` | `0.0` | Environmental fusion weight |
+| `incursion_rule_enabled` | `false` | Potential-incursion policy switch |
+
+These values are reproducible engineering defaults for synthetic fixtures. They are not trained, calibrated, ecological, or regulatory thresholds and must be replaced only through a versioned decision supported by authorised validation data.
+
+### Verification and evaluation currently performed
+
+The repository evaluates these formulas as engineering behavior, not as real biological performance:
+
+- distance unit tests verify identical-point distance, quarter-circle and antipodal arc lengths, symmetry, and non-negativity;
+- fusion tests verify the exact log-linear calculation, omission of unavailable components, weight scaling, deterministic ordering, and a softmax sum of one;
+- risk-policy boundary tests verify equality at $\tau_s=0.5$, OOD gating at $n_i\ge3$ and $g_i\le0.1$, weak-evidence behavior, ambiguity-driven review, and deterministic top-candidate selection;
+- golden fixtures verify same-location full support, distant geographic OOD, no-record behavior, provider-not-configured degradation, missing-location handling, and truncated-top-k reranking;
+- safety tests ensure that no records are never interpreted as species absence and that missing evidence forces safe escalation.
+
+No real-data accuracy, calibration, OOD recall, false-alert rate, or incursion performance is claimed. Those evaluations remain conditional on authorised labelled data under `EarlyDesign.md` Section 19 and Section 23.2.
+
+### Files modified
+
+- `EarlyDesign.md`: moved the append-only Design Change Log to the physical end of the file and added the append-only documentation rule.
+- `Work.md`: appended this mathematical specification, variable glossary, current parameter register, implementation notes, and evaluation status.
+
+### Future maintenance
+
+- When a formula or threshold changes, update the versioned code/configuration and its tests together.
+- Append a new timestamped Design Change Log subsection to the end of `EarlyDesign.md` explaining the requirement change and rationale.
+- Append a new timestamped section to the end of `Work.md` describing the implementation order, affected files, validation performed, compatibility impact, and upgrade or rollback guidance.
+- Never silently alter historical entries or describe prototype fixture behavior as biological validation.
