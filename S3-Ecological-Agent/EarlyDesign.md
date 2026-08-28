@@ -2,12 +2,22 @@
 
 **Document status:** Early design specification for implementation agents<br>
 **Prepared from:** FlyTech Week 4 materials<br>
-**Last updated:** 26 August 2026<br>
+**Last updated:** 28 August 2026<br>
 **Primary target:** A testable proof-of-concept for fruit-fly identification and biosecurity decision support
+
+## Design Change Log
+
+This log is append-only. When requirements change, add a new dated row **below** the existing rows and update `Last updated`; do not rewrite or delete earlier entries. Detailed decisions that need more context must also be recorded in `docs/decisions/`.
+
+| Date | Revision | Change |
+|---|---|---|
+| 28 August 2026 | Prototype Implementation Profile v0.1 | Confirmed prototype-only scope; selected PydanticAI as a replaceable optional agent layer; kept the ecological core runnable without an LLM or live API; froze the first implementation defaults, contracts, risk precedence, error semantics, and fixture acceptance requirements. |
 
 ## 1. Purpose of This Document
 
 This document is the implementation brief for any agent or developer building the FlyTech S3 Ecological Agent. It converts the Week 4 project material into explicit product, data, model, interface, testing, and safety requirements.
+
+Everything described here is currently a **prototype requirement**, not a production deployment claim. The prototype must be deliberately small and runnable, while its boundaries, schemas, configuration, tests, and documentation must make later replacement, extension, maintenance, and production hardening possible without rewriting the ecological core. A prototype shortcut is acceptable only when it is isolated behind an interface, clearly documented, safe, and covered by a test; shortcuts must not become hidden coupling or permanent business logic.
 
 The builder must treat the following distinction as authoritative:
 
@@ -44,7 +54,7 @@ The first testable research question is:
 
 FlyTech is an orchestrated, modular platform. The central orchestrator coordinates specialist agents through shared interfaces.
 
-- **S1 Visual Agent:** produces image- and morphology-based candidate taxa and calibrated probabilities.
+- **S1 Visual Agent:** produces image- and morphology-based candidate taxa and probability or confidence scores; S3 must not assume those scores are calibrated until the interface owner confirms it.
 - **S2 Bioacoustic Agent:** contributes audio or wingbeat evidence where available.
 - **S3 Ecological Agent:** contributes distribution priors, temporal plausibility, environmental suitability, evidence conflicts, and incursion risk.
 - **S4 Resistance Predictor:** contributes DNA and insecticide-resistance evidence.
@@ -100,7 +110,7 @@ The MVP must:
 - resolve submitted taxon names to stable identifiers and known synonyms;
 - retrieve and clean occurrence evidence from GBIF and/or ALA;
 - estimate a geographic and optional temporal support score;
-- rerank candidates with a transparent, calibrated soft-fusion method;
+- rerank candidates with a transparent soft-fusion method; calibration is required only when an authorised labelled validation set is available;
 - return evidence, uncertainty, missing-data flags, and a review-oriented risk state;
 - run end to end without any live API, credential, or network access by using local snapshots, synthetic fixtures, and test doubles;
 - support spatial holdout evaluation;
@@ -155,6 +165,90 @@ Current implementation requirements:
 
 When API access is provided later, the integration task should be limited to implementing and validating the relevant adapter, mapping remote responses to the existing domain model, adding optional live tests, and recording rate-limit, licence, caching, retry, and credential-handling behavior.
 
+### 6.5 Prototype Implementation Profile v0.1
+
+This profile is the normative, directly implementable default for Milestones 0 and 1. It removes choices that would otherwise cause two builder agents to produce incompatible prototypes. It does **not** claim that the numeric defaults are scientifically calibrated. Future profiles must be added through a new dated change-log entry and decision record; do not silently change v0.1 behavior.
+
+#### Runtime and delivery defaults
+
+- use Python 3.11 for the first implementation;
+- use a `pyproject.toml` package with a `src/` layout;
+- prefer `uv` for environment and lock-file management, but document an ordinary `pip` fallback;
+- use Pydantic v2 models as the source for exported JSON Schemas;
+- keep PydanticAI in an optional `agent` dependency group;
+- keep FastAPI in an optional `api` dependency group;
+- use `pytest`, `ruff`, and `pyright` in a development dependency group;
+- expose one deterministic library entry point and one fixture-backed CLI command before adding an HTTP API;
+- set `S3_LLM_ENABLED=false`, fixture/local providers, and network-disabled behavior as the default profile.
+
+The console entry point must be named `s3-ecological` and support at least:
+
+```text
+uv run s3-ecological demo --fixture supported_same_location
+uv run s3-ecological assess --input request.json --output -
+uv run pytest
+uv run ruff check .
+uv run pyright
+```
+
+#### S1 top-k probability semantics
+
+- preserve every supplied `visual_probability` exactly as `visual_probability_raw`;
+- do not renormalize a truncated top-k candidate list and do not imply that it contains all probability mass;
+- accept `candidate_set_complete: bool` and optional `omitted_probability_mass` at request level;
+- require `omitted_probability_mass` to be in `[0, 1]` when supplied;
+- when `candidate_set_complete=true`, require the candidate probabilities to sum to 1 within a configurable floating-point tolerance;
+- when `candidate_set_complete=false`, allow the sum to be less than or equal to 1 and report whether omitted mass is known;
+- reject duplicate candidate identifiers after deterministic taxonomy resolution;
+- a normalized `rerank_score` may sum to 1 across the submitted candidates, but it must be labelled as a **within-candidate-set ranking score**, not a full posterior probability.
+
+#### Deterministic geographic baseline
+
+The v0.1 engineering baseline is nearest-clean-occurrence distance. It exists to prove the contracts and decision path before a learned geographic prior is available.
+
+1. Clean occurrence records using Section 11.
+   A record is usable for the v0.1 distance score only when taxonomy is resolved, coordinates are valid, known coordinate uncertainty is less than or equal to `max_coordinate_uncertainty_m`, and no configured centroid, captive/cultivated, duplicate, or geocoding-artifact exclusion applies. Retain excluded and unknown-uncertainty records as traceable evidence with flags, but do not use them in the distance calculation.
+2. Calculate great-circle distance with the haversine formula and Earth mean radius `6371.0088 km`.
+3. For each candidate, let `d_min_km` be the distance to the nearest usable record.
+4. Calculate:
+
+```text
+geo_support = exp(-d_min_km / geo_distance_scale_km)
+```
+
+5. If no usable records exist, return `geo_support=null`, `evidence_quality=insufficient`, and a `no_records` warning. Do not return zero and do not infer absence.
+6. With one or two usable records, return the score with `evidence_quality=low`, but do not classify the case as geographic OOD or potential incursion.
+7. With at least three usable records, use `evidence_quality=medium` and the prototype may apply the configured geographic state thresholds below. Reserve `high` for a later, validated evidence-quality policy.
+
+The frozen fixture-profile defaults are:
+
+```yaml
+profile_version: "0.1"
+configuration_version: "prototype-v0.1"
+geo_distance_scale_km: 500.0
+max_coordinate_uncertainty_m: 50000
+min_occurrences_for_ood: 3
+geo_supported_min: 0.5
+geo_ood_max: 0.1
+probability_sum_tolerance: 0.000001
+fusion_epsilon: 0.000001
+fusion_weight_geo: 1.0
+fusion_weight_environment: 0.0
+incursion_rule_enabled: false
+```
+
+These values are engineering defaults for reproducible fixtures, not ecological or regulatory thresholds. Production-like experiments must select and version replacements using authorised validation data.
+
+#### v0.1 fusion semantics
+
+- calculate `combined_log_score` from `visual_probability_raw` and every available enabled ecological component;
+- omit an unavailable component and emit a warning instead of substituting zero, one, or fabricated evidence;
+- calculate `rerank_score` by applying softmax to `combined_log_score` across the submitted candidate set;
+- preserve `visual_probability_raw`, `geo_support`, every other component score, `combined_log_score`, and `rerank_score` in the response;
+- break an exact score tie by the original S1 candidate order, then by stable resolved taxon identifier;
+- set `temporal_support=null` and `environmental_suitability=null` in v0.1 unless a separately tested component is explicitly enabled;
+- do not enable `potential_incursion` in the default profile. Until a validated rule is approved, an out-of-range case must remain `geographic_ood` with `review_required=true`.
+
 ## 7. Observe-Reason-Act-Learn Loop
 
 S3 should implement the decision loop described in the Week 4 design.
@@ -177,7 +271,7 @@ If essential information is missing or invalid, continue only with the evidence 
 
 Create a short internal plan based on available evidence:
 
-1. normalize the observation and candidate probabilities;
+1. validate and normalize the observation structure, preserve supplied candidate probabilities, and derive only the separately labelled reranking normalization defined in Profile v0.1;
 2. resolve names and synonyms;
 3. choose relevant occurrence sources and geographic bounds;
 4. load ecological records from the configured fixture, local snapshot, cache, or later live provider through the same interface;
@@ -206,6 +300,50 @@ Tool calls require timeouts, bounded retries, caching, and structured errors. A 
 
 For the current prototype, these tool functions are contracts and callable interfaces. They must have fixture-backed or local implementations. Network-backed implementations may remain unconfigured or explicitly deferred until the project owner provides the required API access.
 
+Every tool must return a typed `ToolResult[T]` equivalent to:
+
+```python
+from typing import Generic, TypeVar
+
+from pydantic import BaseModel, Field
+
+T = TypeVar("T")
+
+
+class ToolResult(BaseModel, Generic[T]):
+    status: ToolStatus
+    data: T | None
+    warnings: list[Issue] = Field(default_factory=list)
+    errors: list[Issue] = Field(default_factory=list)
+    provenance: list[EvidenceReference] = Field(default_factory=list)
+```
+
+Required tool statuses are:
+
+| Tool status | Meaning | Retryable by default |
+|---|---|---:|
+| `success` | Valid result returned | No |
+| `no_records` | Query succeeded but returned no usable occurrence records; this is not evidence of absence | No |
+| `partial` | Some valid data returned with explicit limitations | No |
+| `provider_not_configured` | A real provider was requested without required configuration | No |
+| `timeout` | Provider exceeded the configured deadline | Yes |
+| `rate_limited` | Provider rejected the request because of rate limits | Yes |
+| `unavailable` | Provider or local dependency was unavailable | Yes |
+| `invalid_response` | Provider response could not be validated or mapped safely | No |
+
+Initial typed tool contracts:
+
+| Tool | Input model | Output data model |
+|---|---|---|
+| `resolve_taxonomy` | `TaxonomyQuery` | `TaxonomyResolution` |
+| `query_occurrences` | `OccurrenceQuery` | `list[OccurrenceRecord]` |
+| `estimate_geo_prior` | `GeoPriorRequest` | `list[CandidateGeoSupport]` |
+| `estimate_environmental_suitability` | `SuitabilityRequest` | `list[CandidateSuitability]` |
+| `explain_distribution_evidence` | `ExplanationRequest` | `EvidenceExplanation` derived only from validated evidence |
+| `flag_out_of_range_or_unknown` | `RiskPolicyRequest` | `RiskPolicyResult` |
+
+Each public model must be documented and exported as JSON Schema. Fixture adapters must implement exactly the same contract as future live adapters.
+
 ### 7.4 Learn
 
 Record, but do not blindly apply:
@@ -227,8 +365,11 @@ Use a framework-neutral schema. Pydantic models and JSON Schema are recommended 
 
 ```json
 {
+  "schema_version": "1.0.0",
   "observation_id": "obs-123",
   "source": "flytech-app",
+  "candidate_set_complete": false,
+  "omitted_probability_mass": 0.18,
   "observed_at": "2026-08-26T10:30:00+10:00",
   "location": {
     "latitude": -35.2809,
@@ -237,6 +378,7 @@ Use a framework-neutral schema. Pydantic models and JSON Schema are recommended 
   },
   "visual_candidates": [
     {
+      "candidate_id": "s1-candidate-1",
       "name": "Bactrocera",
       "rank": "genus",
       "visual_probability": 0.82,
@@ -255,13 +397,18 @@ Use a framework-neutral schema. Pydantic models and JSON Schema are recommended 
 
 Validation requirements:
 
+- `schema_version`, `observation_id`, `candidate_set_complete`, and at least one visual candidate are required for an assessment attempt;
 - latitude must be in `[-90, 90]` and longitude in `[-180, 180]`;
 - probabilities must be finite and in `[0, 1]`;
+- apply the candidate-set and omitted-mass rules in Prototype Implementation Profile v0.1;
+- candidate IDs must be unique within a request and must be preserved in every output candidate;
 - preserve the raw candidate name as well as the resolved name;
 - do not silently infer an exact date, location, host, or coordinate precision;
 - distinguish missing time from an explicitly date-free request;
 - reject impossible dates and malformed identifiers with structured errors;
 - allow partial analysis when non-essential fields are missing.
+
+Every `other_agent_evidence` item must use a versioned, framework-neutral `ExternalAgentEvidence` contract containing at least `evidence_id`, `schema_version`, `producer_agent`, `evidence_type`, `status`, optional `candidate_id`, typed `value` and `unit` fields where applicable, `provenance_refs`, and `generated_at`. Standalone S3 validates and preserves these items as integration context but does not implement their producer, reinterpret unknown payloads, or perform final cross-agent fusion.
 
 ## 9. Output Contract
 
@@ -269,22 +416,28 @@ S3 must return structured evidence and risk, not only a label.
 
 ```json
 {
+  "schema_version": "1.0.0",
   "observation_id": "obs-123",
   "analysis_id": "s3-run-uuid",
-  "status": "completed_with_warnings",
+  "status": "completed",
   "reranked_candidates": [
     {
       "submitted_name": "Bactrocera",
+      "candidate_id": "s1-candidate-1",
       "resolved_taxon": {
         "scientific_name": "Bactrocera",
         "rank": "genus",
         "taxon_ids": {"gbif": "...", "ala": "..."}
       },
-      "visual_probability": 0.82,
+      "visual_probability_raw": 0.82,
       "geo_support": 0.61,
+      "min_occurrence_distance_km": 247.2,
+      "usable_occurrence_count": 12,
       "temporal_support": null,
       "environmental_suitability": null,
-      "combined_score": 0.73,
+      "combined_log_score": -0.693,
+      "rerank_score": 1.0,
+      "ecological_state": "ecologically_supported",
       "evidence_quality": "medium",
       "conflicts": [],
       "supporting_evidence_ids": ["evidence-1"]
@@ -292,17 +445,60 @@ S3 must return structured evidence and risk, not only a label.
   ],
   "risk_state": "ecologically_supported",
   "review_required": false,
+  "review_reasons": [],
   "uncertainty": {
     "level": "medium",
     "reasons": ["environmental covariates unavailable"]
   },
   "missing_evidence": ["host", "environmental_covariates"],
-  "evidence": [],
-  "model_versions": {},
-  "threshold_versions": {},
+  "requested_evidence": [],
+  "evidence": [
+    {
+      "evidence_id": "evidence-1",
+      "source": "fixture",
+      "source_record_id": "fixture-occurrence-1",
+      "dataset_id": "fixture-occurrences-v0.1",
+      "source_url": "fixture://occurrences/fixture-occurrence-1",
+      "retrieved_at": "2026-08-26T00:00:00Z",
+      "scientific_name_raw": "Bactrocera",
+      "taxon_id": "fixture:bactrocera",
+      "latitude": -35.1,
+      "longitude": 146.4,
+      "coordinate_uncertainty_m": 100,
+      "event_date": "2026-08-01",
+      "basis_of_record": "synthetic_fixture",
+      "license": "CC0-1.0",
+      "media_license": null,
+      "quality_flags": [],
+      "cleaning_actions": [],
+      "query_parameters": {"taxon_id": "fixture:bactrocera"},
+      "snapshot_or_cache_key": "fixture-occurrences-v0.1"
+    }
+  ],
+  "warnings": [],
+  "errors": [],
+  "profile_version": "0.1",
+  "configuration_version": "prototype-v0.1",
+  "model_versions": {"geo": "nearest-distance-v0.1"},
+  "threshold_versions": {"risk": "fixture-thresholds-v0.1"},
+  "data_snapshot_versions": {"occurrence": "fixture-occurrences-v0.1"},
+  "explanation": "The submitted candidate is supported by nearby fixture occurrence evidence; environmental suitability was not evaluated.",
   "generated_at": "2026-08-26T00:00:00Z"
 }
 ```
+
+Top-level `status` is separate from ecological risk and must be one of:
+
+| Status | Meaning |
+|---|---|
+| `completed` | All enabled components completed without a warning; components intentionally disabled by the selected profile do not create a warning unless the request explicitly required them |
+| `completed_with_warnings` | A valid partial or complete assessment exists, but one or more components were missing, disabled, degraded, or inconclusive |
+| `failed_validation` | The request could not be assessed because required structure or values were invalid |
+| `failed` | No safe assessment could be returned because of an internal processing failure; return a redacted typed error and log the trace outside the public response |
+
+Warnings and errors must use the shared shape `{code, message, component, retryable, details?}`. Do not expose credentials, raw stack traces, or sensitive configuration in `details`.
+
+Minimum `IssueCode` values are `invalid_input`, `unsupported_schema_version`, `unsupported_profile`, `duplicate_candidate`, `ambiguous_taxonomy`, `no_records`, `component_unavailable`, `provider_not_configured`, `timeout`, `rate_limited`, `unavailable`, `invalid_response`, and `score_not_computable`. Extensions must be documented and backward-compatible within the same schema major version.
 
 Required risk states:
 
@@ -314,9 +510,29 @@ Required risk states:
 | `environmental_conflict` | Available covariates are inconsistent with the fitted suitability model | Do not reject candidate; report model scope and uncertainty |
 | `potential_incursion` | Candidate is visually plausible and outside known range but location appears suitable, or another validated rule is triggered | Require expert or biosecurity review |
 | `unknown_or_insufficient_evidence` | Candidate set or evidence cannot support a reliable conclusion | Request more evidence or defer |
-| `conflicting_multimodal_evidence` | Specialist agents materially disagree | Route to orchestrator and expert review |
+| `conflicting_multimodal_evidence` | Reserved integration state supplied or derived by the external orchestrator when specialist agents materially disagree | S3 may preserve the flag in an integration response but must not compute cross-agent fusion |
 
 `potential_incursion` must never be presented as `confirmed_incursion`.
+
+#### Risk-state ownership and deterministic precedence
+
+- `ecological_state` is calculated per candidate; top-level `risk_state` describes the case using the highest-ranked candidate after reranking;
+- candidate `ecological_state` is limited to `ecologically_supported`, `weak_ecological_support`, `geographic_ood`, `environmental_conflict`, or `unknown_or_insufficient_evidence`; case-level `risk_state` may additionally use a validated `potential_incursion` or externally supplied `conflicting_multimodal_evidence` state;
+- retain every candidate's state so the orchestrator can inspect alternatives;
+- standalone S3 must never generate `conflicting_multimodal_evidence`; cross-agent conflict detection and final fusion belong to the orchestrator;
+- an externally supplied conflict flag may be validated and echoed as integration context, but it must not change S3 component scores;
+- `failed_validation` is a processing status, not a risk state.
+
+For v0.1, apply the following first-match precedence:
+
+1. `unknown_or_insufficient_evidence` when no valid candidate can be assessed, location is unavailable for every enabled ecological check, or the top-ranked candidate has no usable ecological evidence;
+2. `potential_incursion` only when `incursion_rule_enabled=true` and a separately documented, versioned, validated rule fires;
+3. `environmental_conflict` when an enabled suitability component reports a versioned conflict for the top candidate and no potential-incursion rule fired;
+4. `geographic_ood` when the top candidate has at least `min_occurrences_for_ood` usable records and `geo_support <= geo_ood_max`;
+5. `weak_ecological_support` when evidence quality is low or `geo_ood_max < geo_support < geo_supported_min`;
+6. `ecologically_supported` when `geo_support >= geo_supported_min` and no higher-precedence condition fired.
+
+`review_required` must be true for `potential_incursion`, `environmental_conflict`, `geographic_ood`, `unknown_or_insufficient_evidence`, ambiguous taxonomy, and any externally supplied multimodal-conflict flag. Threshold equality must follow the operators shown above and be covered by boundary tests.
 
 ## 10. Evidence and Provenance Model
 
@@ -380,7 +596,7 @@ Random row splits are insufficient. At minimum, implement spatial blocks, geogra
 
 ### 12.1 Baseline A: occurrence-distance heuristic
 
-Implement a simple, explainable baseline before a neural geographic prior. Examples include distance to quality-filtered records, kernel density, or region-level frequency with smoothing. Its purpose is to validate interfaces and evaluation, not to claim ecological truth.
+Implement the nearest-clean-occurrence method frozen in Prototype Implementation Profile v0.1 before a neural geographic prior. Kernel density or region-level frequency with smoothing may be added later only as separately named, versioned adapters. The v0.1 method exists to validate interfaces and evaluation, not to claim ecological truth.
 
 ### 12.2 Baseline B: presence-only geographic prior
 
@@ -401,9 +617,11 @@ Suitability is not occurrence probability and is not incursion probability.
 Start with an interpretable log-linear fusion:
 
 ```text
-combined_score(s) = log(p_visual(s) + eps)
-                  + w_geo * log(p_geo(s | location, time) + eps)
-                  + w_env * log(p_env(s | environment) + eps)
+combined_log_score(s) = log(visual_probability_raw(s) + eps)
+                      + w_geo * log(p_geo(s | location, time) + eps)
+                      + w_env * log(p_env(s | environment) + eps)
+
+rerank_score(candidate_set) = softmax(combined_log_score(candidate_set))
 ```
 
 Requirements:
@@ -413,8 +631,9 @@ Requirements:
 - handle unavailable ecological components explicitly instead of substituting false certainty;
 - normalize scores for candidate reranking where appropriate;
 - preserve component scores in the output;
+- preserve the unnormalised `combined_log_score` and the within-candidate-set `rerank_score` as different fields;
 - compare fused performance against S1-only, geographic-only, and environment-only ablations;
-- calibrate final risk decisions rather than interpreting raw combined scores as probabilities.
+- calibrate final risk decisions when authorised labelled validation data are available; never interpret either score as an incursion probability.
 
 ## 13. Datasets and Data Platforms
 
@@ -493,7 +712,10 @@ S3-Ecological-Agent/
     sources.example.yaml
     thresholds.example.yaml
   src/s3_ecological/
+    agent/
     schemas/
+    interfaces/
+    providers/
     taxonomy/
     occurrence/
     priors/
@@ -535,7 +757,86 @@ Architecture requirements:
 - model and data artefacts must not be committed if their licences or size make that inappropriate;
 - use data cards and model cards for all material snapshots and trained models.
 
-### 16.1 Code readability, maintainability, and extensibility
+### 16.1 Prototype agent framework and optional LLM boundary
+
+The recommended prototype stack is **Python, Pydantic, PydanticAI, pytest, and an optional FastAPI transport layer**. PydanticAI is the preferred first agent framework because it supports typed tools, dependency injection, validated structured outputs, test models, and replaceable model providers. This is an implementation recommendation, not a permanent platform dependency: if later project evidence favours the OpenAI Agents SDK, LangGraph, another framework, or a centrally supplied FlyTech runtime, S3 must be able to replace the agent adapter without rewriting ecological domain logic.
+
+The stack is recommended for the following concrete S3 reasons:
+
+- S3 inputs and outputs require explicit, validated data structures for taxa, locations, observation times, environmental variables, visual and ecological scores, evidence, provenance, missing values, and uncertainty;
+- PydanticAI provides typed tools, dependency injection, and validated structured outputs, which supports the prototype's readability, maintainability, testability, and later extension;
+- its provider abstraction can support OpenAI, Anthropic, Google, Ollama, and other compatible model providers, so S3 must select the provider through configuration rather than become locked to one API vendor;
+- the absence of an API key must not block the build: use PydanticAI's offline test model or an S3-owned mock provider to test the agent loop, tool contracts, dependency injection, and output validation before enabling a real model.
+
+The prototype must follow these boundaries:
+
+- the S3 ecological core must run and be fully testable **without an LLM**, network access, credentials, HTTP, or PydanticAI;
+- Pydantic models and exported JSON Schema are the canonical request, response, evidence, error, and external-agent contracts;
+- PydanticAI may be used only in `agent/` as a thin orchestration and interaction layer over typed S3 tools;
+- FastAPI, if added, is a transport adapter rather than the owner of S3 business logic;
+- framework SDK objects, chat messages, and provider response objects must not cross into `taxonomy/`, `occurrence/`, `priors/`, `suitability/`, `fusion/`, `risk/`, or `evidence/`;
+- the LLM may interpret a request, select an allowed tool, identify missing inputs, request clarification, and explain already-computed results;
+- deterministic Python code or a separately versioned statistical or machine-learning model must perform taxonomy validation, occurrence cleaning, ecological scoring, fusion, threshold checks, and risk-state assignment;
+- the LLM must never generate or override occurrence records, taxa, coordinates, component scores, thresholds, risk states, citations, provenance, or model versions;
+- an LLM-generated explanation must be derived only from the validated S3 result and evidence objects, and the structured result remains authoritative if prose and data disagree;
+- a deterministic orchestration path must remain available for batch evaluation, regression tests, debugging, and deployments that disable generative AI;
+- the default demo must use a mock or framework-provided test model and must not require a real model API key.
+
+Define an S3-owned model boundary using a small `Protocol` or equivalent interface. The exact names may change, but the dependency direction must remain equivalent to:
+
+```python
+class LLMProvider(Protocol):
+    async def generate(self, request: AgentRequest) -> AgentResponse:
+        """Return a validated orchestration or explanation result."""
+        ...
+```
+
+The first implementation should provide:
+
+- `MockLLMProvider` or PydanticAI's offline test model for deterministic development and tests;
+- configuration that disables the LLM by default and selects providers without code changes;
+- a deferred adapter location for a future OpenAI or other approved provider;
+- a typed tool registry containing only S3-owned capabilities;
+- an explicit allow-list so the agent cannot call arbitrary code, shell commands, network endpoints, or tools belonging to S1, S2, S4, S5, S6, or the orchestrator.
+
+Suggested configuration semantics:
+
+```text
+S3_LLM_ENABLED=false
+S3_LLM_PROVIDER=mock
+S3_LLM_MODEL=
+```
+
+Configuration names may follow repository conventions, but disabled or unconfigured LLM mode must start successfully. A missing credential must produce a typed `provider_not_configured` result only when the real provider is requested; it must not prevent deterministic S3 analysis.
+
+The current prototype does not require multi-agent conversations, autonomous long-running execution, or graph-based workflow persistence. Do not introduce AutoGen, LangGraph, a vector database, or another orchestration platform until a documented S3 use case and evaluation justify the extra dependency. Knowledge retrieval may later use LlamaIndex or another RAG component behind an S3-owned evidence-retriever interface, but retrieval output must still pass provenance validation before it affects an assessment.
+
+### 16.2 Configuration contract
+
+Represent runtime configuration with a validated, typed `S3Settings` model and publish an empty-secret example. Reject unknown fields so configuration mistakes do not silently change ecological behavior.
+
+Configuration precedence, from highest to lowest, is:
+
+1. explicit constructor or CLI arguments;
+2. environment variables;
+3. the selected versioned YAML/TOML configuration file;
+4. Prototype Implementation Profile v0.1 defaults.
+
+The configuration must cover:
+
+- `configuration_version` and `profile_version`;
+- taxonomy and occurrence provider selection;
+- snapshot paths and checksums;
+- geographic bounds and cleaning rules;
+- baseline parameters, fusion weights, and risk thresholds;
+- cache location, TTL, timeouts, and bounded retry policy;
+- privacy and coordinate-coarsening policy;
+- LLM enabled flag, provider, model, and safe limits;
+- logging level and redaction behavior.
+
+Secrets are never valid configuration-file values in committed examples. Real-provider credentials must come from environment variables or an approved secret store. Invalid configuration must fail before analysis with a typed message that identifies the field but never echoes secret values.
+
+### 16.3 Code readability, maintainability, and extensibility
 
 These are hard requirements for the prototype, not optional cleanup work. Code that produces the expected output but is difficult to understand, test, modify, or extend does not satisfy this design.
 
@@ -591,7 +892,9 @@ The selected toolchain may follow repository standards. For a new Python impleme
 
 - no formatter, linter, type-checker, or test errors in S3-owned code;
 - meaningful unit coverage for schemas, cleaning, fusion, risk policies, and error handling, with a target of at least 80 percent line coverage for core deterministic modules;
+- an import-boundary test or equivalent architectural check showing that deterministic domain modules do not depend on PydanticAI, FastAPI, or a model-provider SDK;
 - tests that demonstrate a provider or model can be replaced with a fixture through its interface;
+- tests that demonstrate the same validated ecological assessment can be produced with the LLM disabled;
 - code review evidence that an additional occurrence provider can be added without rewriting the core decision pipeline;
 - a readable fixture-based example that a new developer or agent can run from the README without live credentials.
 
@@ -658,6 +961,8 @@ The explanation must identify which threshold fired and which version defined it
 
 ## 19. Evaluation Plan
 
+This section defines research evaluation once authorised, appropriately labelled data and compatible S1 outputs are available. It must not block the fixture-backed engineering prototype. Synthetic fixtures may validate evaluation code paths, but their metrics must never be reported as biological, identification, calibration, OOD, or incursion performance.
+
 ### 19.1 Required comparisons
 
 Evaluate at least:
@@ -720,10 +1025,30 @@ Use recorded or synthetic fixtures for:
 - stale cache and source refresh;
 - conflicting source taxonomy;
 - orchestrator request and response round trip.
+- deterministic end-to-end analysis with `S3_LLM_ENABLED=false`;
+- mock/test-model agent tool selection without network access;
+- validation that agent prose cannot mutate the authoritative component scores, risk state, evidence, or provenance.
 
-Live API tests must be optional and clearly marked.
+Live API and real-LLM tests must be optional, clearly marked, excluded from the default test command, and safe to skip when credentials are absent.
 
-### 20.3 Safety tests
+### 20.3 Golden acceptance fixtures
+
+Store versioned request, provider-response, and expected-result files under `tests/fixtures/golden/`. The default test command must run all golden cases with networking and the LLM disabled. Assert exact enum, flag, warning, version, and ordering values; use documented floating-point tolerances for calculated scores.
+
+The minimum v0.1 golden cases are:
+
+| Fixture | Synthetic setup | Required result |
+|---|---|---|
+| `supported_same_location` | Observation at `(0, 0)`; top candidate has three valid occurrence records at `(0, 0)`, `(0, 0.1)`, and `(0, -0.1)` | `geo_support=1.0`; candidate remains first; `risk_state=ecologically_supported`; `review_required=false` |
+| `geographic_ood_review` | Observation at `(0, 0)`; top candidate has at least three valid records whose nearest point is around `(0, 20)`; incursion rule disabled | `geo_support < geo_ood_max`; `risk_state=geographic_ood`; `review_required=true`; never `potential_incursion` or `confirmed_incursion` |
+| `no_occurrence_records` | Occurrence query succeeds with no records for every candidate | `geo_support=null`; tool status `no_records`; case status `completed_with_warnings`; `risk_state=unknown_or_insufficient_evidence`; no absence claim |
+| `provider_not_configured` | A live provider is explicitly selected without its required configuration | Typed `provider_not_configured` issue; no startup crash; any fixture-backed components may still return a safe partial result |
+| `missing_location` | Structurally valid request omits location | Case status `completed_with_warnings`; no occurrence-distance calculation; `risk_state=unknown_or_insufficient_evidence`; `requested_evidence` asks for location |
+| `truncated_top_k` | `candidate_set_complete=false`; raw probabilities `0.6` and `0.3`; omitted mass `0.1`; candidates have equal ecological support | Raw probabilities and omitted mass remain unchanged; rerank scores are approximately `0.666667` and `0.333333`, sum to 1 only across submitted candidates, and are not labelled as a posterior |
+
+Each expected result must include `schema_version`, `profile_version`, `configuration_version`, model, threshold, and data-snapshot versions. Golden fixtures are engineering acceptance evidence only and must not be reported as biological performance.
+
+### 20.4 Safety tests
 
 Verify that S3:
 
@@ -761,6 +1086,9 @@ Do not commit API keys, restricted data, large raw datasets, or media without ve
 - Create the package skeleton, configuration examples, and decision log.
 - Convert the input/output contracts in this document into validated schemas.
 - Add a minimal CLI or callable function using synthetic fixtures.
+- Add the deterministic orchestration path first, with no dependency on an LLM.
+- Add the PydanticAI adapter, typed S3 tool wrappers, and mock/test-model configuration as a replaceable outer layer.
+- Define the `LLMProvider` boundary and deferred real-provider configuration without requiring credentials.
 - Configure and document formatting, linting, static type checking, tests, and the fixture-demo command.
 - Add the provider/model interfaces and at least one test double before connecting a live API.
 
@@ -798,13 +1126,20 @@ Do not begin a later milestone until the previous milestone has a runnable demo 
 
 ## 23. Definition of Done for the First Testable S3 Agent
 
-The first S3 agent is complete only when all of the following are true:
+### 23.1 Core engineering prototype definition of done
+
+The first fixture-backed S3 engineering prototype is complete only when all of the following are true:
 
 - [ ] A validated request with S1 candidates, location, and optional date can be processed end to end.
 - [ ] The S1 request used by standalone tests is a fixture or schema-compatible external payload; no S1 implementation is required.
 - [ ] Taxon names are resolved with raw and accepted forms preserved.
 - [ ] In-memory and local-snapshot occurrence adapters work through the same interface intended for future GBIF/ALA adapters.
 - [ ] The prototype starts, demonstrates its full workflow, and passes tests without API credentials, live providers, or network access.
+- [ ] The same core ecological assessment can run with `S3_LLM_ENABLED=false`, and the default prototype does not require an external LLM.
+- [ ] PydanticAI, if present, is confined to the agent adapter and can be replaced without modifying deterministic ecological modules.
+- [ ] A mock or offline test model exercises typed agent tools and validated outputs without making a model API call.
+- [ ] Real LLM providers are configuration-selected adapters; no provider SDK or model name is hard-coded into domain logic.
+- [ ] Agent-generated prose cannot override the authoritative structured scores, risk state, thresholds, evidence, or provenance.
 - [ ] Unconfigured live providers return an explicit safe status and do not prevent other S3 functions from running.
 - [ ] Future GBIF/ALA integration can be added as an adapter without changing the core cleaning, fusion, risk, evidence, or public-schema logic.
 - [ ] Occurrence records retain source IDs, query details, coordinate precision, dates, licences, and cleaning flags.
@@ -812,20 +1147,35 @@ The first S3 agent is complete only when all of the following are true:
 - [ ] S1 and ecological scores are combined through documented soft fusion.
 - [ ] Output contains reranked candidates, component scores, evidence, uncertainty, missing evidence, versions, and risk state.
 - [ ] No-data and provider-failure cases return safe partial results.
-- [ ] A spatial holdout evaluation compares S1-only against S1-plus-S3.
-- [ ] Calibration and OOD metrics are reported where labels permit.
+- [ ] All v0.1 golden acceptance fixtures pass through the documented CLI and library entry point.
 - [ ] Potential-incursion cases require review and are never presented as confirmed incursions.
 - [ ] Unit, integration, and safety tests pass without network access.
 - [ ] Formatting, linting, and static type checks pass for all S3-owned code.
 - [ ] Core deterministic modules meet the documented coverage target, or an explicit evidence-based exception is recorded.
 - [ ] Public interfaces and non-obvious ecological or scoring decisions have accurate docstrings or concise rationale comments.
 - [ ] A provider and a model can each be replaced by a fixture or test double without changing the core decision pipeline.
+- [ ] Import-boundary checks show that the core does not depend on PydanticAI, FastAPI, or an external LLM SDK.
 - [ ] The implementation contains no unexplained magic thresholds, duplicated scoring logic, provider objects leaking into domain logic, or vague permanent TODOs.
 - [ ] A README explains setup, demo commands, configuration, data acquisition, and limitations.
 - [ ] Relevant data cards, model cards, licence notes, and experiment records exist.
 - [ ] Versioned interface schemas and examples exist for all external-module boundaries used by S3.
 - [ ] Tests pass with mocks or fixtures when S1, S2, S4, S5, S6, and the orchestrator are unavailable.
 - [ ] No non-S3 agent logic, orchestrator routing logic, application logic, or expert-workflow implementation has been added to the S3 repository.
+
+### 23.2 Conditional research-validation definition of done
+
+These items become required only after the project owner or supervisor supplies or approves suitable data, S1 outputs, labels, and evaluation scope. Their absence must not block completion of the engineering prototype.
+
+- [ ] The evaluation dataset has an approved licence, provenance, checksum, taxonomy mapping, and split manifest.
+- [ ] Real or authorised recorded S1 candidate outputs are available; synthetic visual probabilities are not used to claim identification performance.
+- [ ] A spatial holdout evaluation compares S1-only, geographic-only, and S1-plus-S3 results.
+- [ ] Temporal, local-OOD, and non-local-OOD splits are evaluated where the available data support them.
+- [ ] Calibration and OOD metrics are reported only where valid labels permit.
+- [ ] Potential-incursion and false-alert metrics use expert-validated or authorised regulatory labels rather than inferred public-record absence.
+- [ ] Confidence intervals or repeated-split variation are reported where sample size permits.
+- [ ] The evaluation report clearly separates engineering fixture results from biological research results.
+
+If these inputs are unavailable, record the research-validation status as `not_run_missing_authorised_data` with the missing dependency; do not fabricate data, labels, metrics, or completion evidence.
 
 ## 24. Questions That Require Project-Owner or Supervisor Confirmation
 
