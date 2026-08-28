@@ -1,0 +1,7 @@
+occurrenceID,scientificName,acceptedScientificName,taxonID,taxonRank,decimalLatitude,decimalLongitude,coordinateUncertaintyInMeters,eventDate,basisOfRecord,license,mediaLicense,isCaptive,isCultivated
+generic:001,,,generic:taxon-001,species,10.0,20.0,50,2020-01-01,HumanObservation,CC-BY 4.0,,false,false
+generic:002,Foo bar,Foo bar,,species,10.0,20.0,50,2020-01-01,HumanObservation,CC-BY 4.0,,false,false
+generic:003,Foo bar,Foo bar,generic:taxon-003,species,not-a-number,20.0,50,2020-01-01,HumanObservation,CC-BY 4.0,,false,false
+generic:004,Foo bar,Foo bar,generic:taxon-004,species,10.0,20.0,-5,2020-01-01,HumanObservation,CC-BY 4.0,,false,false
+generic:005,Foo bar,Foo bar,generic:taxon-005,species,10.0,Infinity,50,2020-01-01,HumanObservation,CC-BY 4.0,,false,false
+generic:006,Foo bar,Foo bar,generic:taxon-006,species,10.0,20.0

@@ -1,0 +1,6 @@
+occurrenceID,gbifID,scientificName,acceptedScientificName,acceptedTaxonKey,taxonKey,taxonID,taxonRank,decimalLatitude,decimalLongitude,coordinateUncertaintyInMeters,eventDate,year,month,day,basisOfRecord,license,mediaLicense,isCaptive,isCultivated
+urn:catalog:GBIF:1001,1234567890,Bactrocera dorsalis,Bactrocera dorsalis,145433,145433,,SPECIES,14.5,121.0,50,2019-03-14,2019,3,14,HUMAN_OBSERVATION,CC-BY 4.0,,false,false
+,,Ceratitis capitata,Ceratitis capitata,146052,146052,,SPECIES,-1.5,20.3,,,2020,07,,PRESERVED_SPECIMEN,CC0 1.0,,,
+urn:catalog:GBIF:1003,1234567892,Anastrepha ludens,Anastrepha ludens,145478,145478,,SPECIES,19.4,-99.1,200,2021-06-01,2021,6,1,HUMAN_OBSERVATION,CC-BY 4.0,,unknown,
+urn:catalog:GBIF:1004,1234567893,Bactrocera dorsalis,Bactrocera dorsalis,999999,999999,,SPECIES,15.0,120.5,75,2018-01-01,2018,1,1,HUMAN_OBSERVATION,CC-BY 4.0,,false,false
+urn:catalog:GBIF:1005,1234567894,Rhagoletis pomonella,Rhagoletis pomonella,145523,145523,,SPECIES,42.3,-71.1,30,2022-09-10,2022,9,10,HUMAN_OBSERVATION,CC-BY 4.0,CC-BY 4.0,false,false

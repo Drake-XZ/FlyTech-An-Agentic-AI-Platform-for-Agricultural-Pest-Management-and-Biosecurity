@@ -63,6 +63,9 @@ class S3Settings(BaseModel):
     occurrence_provider: str = "fixture"
     occurrence_snapshot_path: str | None = None
     taxonomy_provider: str = "fixture"
+    # Required only when taxonomy_provider == "local_snapshot" - points at a
+    # taxonomy.json bundle produced by `import-occurrences` (Milestone 1.5).
+    taxonomy_snapshot_path: str | None = None
 
     # --- Deferred live-provider configuration (names only, never secrets) -
     gbif_base_url: str | None = None

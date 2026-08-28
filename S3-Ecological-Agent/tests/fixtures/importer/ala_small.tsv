@@ -1,0 +1,4 @@
+occurrenceID	id	scientificName	acceptedScientificName	acceptedConceptID	taxonConceptID	taxonID	taxonRank	decimalLatitude	decimalLongitude	coordinateUncertaintyInMeters	eventDate	year	month	day	basisOfRecord	license	mediaLicense	isCaptive	isCultivated
+ALA:rec-01		Bactrocera tryoni	Bactrocera tryoni	urn:lsid:biodiversity.org.au:apni.taxon:12345	urn:lsid:biodiversity.org.au:apni.taxon:12345		species	-27.5	153.0	100	2020-11-05	2020	11	5	HumanObservation	CC-BY 4.0 (Int)		false	false
+ALA:rec-02		Ceratitis capitata	Ceratitis capitata	urn:lsid:biodiversity.org.au:apni.taxon:67890	urn:lsid:biodiversity.org.au:apni.taxon:67890		species	-33.8	151.2		2019-04-22	2019	4	22	HumanObservation	CC-BY 4.0 (Int)			
+		Rhagoletis cerasi	Rhagoletis cerasi	urn:lsid:biodiversity.org.au:apni.taxon:54321	urn:lsid:biodiversity.org.au:apni.taxon:54321		species	48.1	11.6	25		2021			PreservedSpecimen	CC0 1.0		true	false

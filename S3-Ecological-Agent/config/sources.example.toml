@@ -19,3 +19,10 @@ occurrence_provider = "fixture"
 # occurrence_provider = "live_gbif"
 # gbif_base_url = "https://api.gbif.org/v1"
 # gbif_api_key_env_var = "GBIF_API_KEY"
+
+# Milestone 1.5: query the occurrences.json/taxonomy.json bundle produced by
+# `s3-ecological import-occurrences` (see docs/data_cards/offline_occurrence_snapshot_v1.md).
+# occurrence_provider = "local_snapshot"
+# occurrence_snapshot_path = "data/snapshots/example/occurrences.json"
+# taxonomy_provider = "local_snapshot"
+# taxonomy_snapshot_path = "data/snapshots/example/taxonomy.json"

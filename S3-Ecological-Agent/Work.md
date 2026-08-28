@@ -766,3 +766,404 @@ No real-data accuracy, calibration, OOD recall, false-alert rate, or incursion p
 - Append a new timestamped Design Change Log subsection to the end of `EarlyDesign.md` explaining the requirement change and rationale.
 - Append a new timestamped section to the end of `Work.md` describing the implementation order, affected files, validation performed, compatibility impact, and upgrade or rollback guidance.
 - Never silently alter historical entries or describe prototype fixture behavior as biological validation.
+
+---
+
+## 2026-08-29 00:20 Australia/Sydney
+
+### Scope
+
+Implementation of **Milestone 1.5: offline occurrence snapshot ingestion**,
+exactly as specified in the `EarlyDesign.md` design record dated "2026-08-28
+22:52 Australia/Sydney — Next implementation increment: offline occurrence
+snapshot ingestion." This adds one new CLI subcommand
+(`import-occurrences`), one new deterministic-adjacent ingestion module, one
+new taxonomy provider, and the schemas/tests/docs needed to convert a
+locally-held GBIF/ALA/generic-Darwin-Core occurrence export (or a previously
+produced canonical bundle) into an on-disk `occurrences.json` +
+`taxonomy.json` + `import-report.json` snapshot bundle that `assess` can
+query offline via `occurrence_provider`/`taxonomy_provider = "local_snapshot"`.
+
+Explicitly **out of scope**, and not touched: the Profile v0.1 math
+(distance, fusion, risk-policy formulas/thresholds/precedence), the meaning
+of any existing golden fixture, and any S1/S2/S4/S5/S6/orchestrator/UI
+business logic. No network access, external API call, API key, real LLM
+call, or real downloaded dataset was used or is required to run or test this
+code; every fixture under `tests/fixtures/importer/` is a small,
+hand-written synthetic file, not a real GBIF/ALA/ALA export.
+
+### Modification order
+
+1. Re-read `EarlyDesign.md`'s "offline occurrence snapshot ingestion" design
+   record and `Work.md` in full to confirm this was implementing a design
+   already recorded, not inventing new scope.
+2. Added `schemas/snapshot.py`: `OccurrenceSnapshot`, `TaxonomySnapshotItem`,
+   `TaxonomySnapshot`, `ImportRejection`, `OutputFileChecksum`,
+   `ImportReport`, `ImportStatus` — all `ConfigDict(extra="forbid")`, mirroring
+   the existing `schemas/request.py`/`response.py` style.
+3. Added `ingestion/occurrence_snapshot.py` (`import_occurrence_snapshot`,
+   `ImportFatalError`): field-mapping tables and `_resolve_format` for
+   `gbif`/`ala`/`generic_dwc`, the canonical-JSON re-import path, row parsing
+   and rejection, taxonomy-item construction and ambiguity marking, and the
+   atomic write/checksum-verify/commit sequence.
+4. Added `providers/taxonomy_local_snapshot.py`
+   (`LocalSnapshotTaxonomyProvider`) implementing the existing
+   `TaxonomyProvider` Protocol, reusing the same
+   `interfaces/taxonomy.py::TaxonomyQuery`/`TaxonomyResolution` contract as
+   `providers/taxonomy_fixture.py::FixtureTaxonomyProvider`.
+5. Extended `providers/factory.py` with `validate_local_snapshot_bundle` and
+   wired `taxonomy_provider="local_snapshot"`/`occurrence_provider=
+   "local_snapshot"` into `build_taxonomy_provider`/`build_occurrence_provider`
+   (the occurrence side, `LocalSnapshotOccurrenceProvider`, already existed
+   from Milestone 1 — only the taxonomy side and the cross-bundle
+   consistency check are new).
+6. Added `S3Settings.taxonomy_snapshot_path` (`settings.py`), mirroring the
+   existing `occurrence_snapshot_path`.
+7. Added the `import-occurrences` subcommand to `cli.py`, reusing the
+   existing `demo`/`assess` argparse structure and offline-only invariants
+   documented at the top of that module.
+8. Added three synthetic fixtures under `tests/fixtures/importer/`
+   (`gbif_small.csv`, `ala_small.tsv`, `malformed_rows.csv`) and the data
+   card `docs/data_cards/offline_occurrence_snapshot_v1.md`.
+9. Wrote `tests/unit/test_occurrence_snapshot_import.py` (importer unit
+   tests) and `tests/integration/test_imported_snapshot_pipeline.py`
+   (import → `run_assessment` end-to-end tests), reusing `run_assessment`,
+   `build_taxonomy_provider`/`build_occurrence_provider`,
+   `NearestDistanceGeoPriorModel`, `NullSuitabilityModel`, and
+   `DeterministicRiskPolicy` exactly as the existing golden/safety tests do —
+   no scoring, cleaning, or risk logic was duplicated.
+10. Registered the six new schema models in
+    `scripts/export_json_schemas.py`, and documented the new subcommand and
+    package-layout entry in `README.md` and the new `local_snapshot` block
+    in `config/sources.example.toml`.
+11. Ran the full test suite, found and fixed one genuine pre-existing
+    implementation defect (see "Methods and design decisions" below), then
+    ran `ruff check .` and `pyright` to a clean baseline, then ran real CLI
+    example commands end to end.
+
+### Methods and design decisions
+
+- **Row-level rejection is per-row, not per-error.** A row can fail several
+  checks at once (e.g. missing `scientificName` and a non-numeric latitude);
+  the importer records exactly one `ImportRejection` per row, joining every
+  triggering message with `"; "` and reporting the first error's `code`/
+  `field` as primary — so `rejected_record_count` always equals the number of
+  distinct bad *rows*, never the number of individual defects.
+- **Zero accepted records is fatal, not a valid partial report.** If every
+  row in an input file is rejected, `import_occurrence_snapshot` raises
+  `ImportFatalError("zero accepted records; nothing to import")` and writes
+  no bundle at all, rather than writing an empty-but-"completed" one. This
+  matches `EarlyDesign.md`'s documented failure semantics and is exercised
+  directly by `test_malformed_rows_all_rejected_is_fatal_and_writes_nothing`
+  / `test_malformed_rows_alone_are_all_rejected_and_the_import_is_fatal`.
+- **A genuine pre-existing bug was found and fixed in `_import_canonical`,
+  and the fix deliberately departs from one literal sentence of the design
+  text — this is called out explicitly, not glossed over.**
+  `EarlyDesign.md`'s canonical-reimport wording says a canonical file's
+  "dataset ID, retrieval time, licence, citation, **and source** must
+  exactly match the CLI metadata." Read completely literally, this is
+  self-contradictory with the design's own reimport use case: `--source
+  canonical` is the CLI selector that is *always* the literal string
+  `"canonical"` on this code path, while the file's own `source` field
+  correctly records where its records originally came from (e.g. `"gbif"`).
+  A prior implementation pass had compared these two directly, so
+  re-importing any real gbif/ala/generic_dwc-sourced `occurrences.json`
+  always raised `ImportFatalError` — permanently breaking the documented
+  reimport workflow, and directly contradicting the pre-existing unit test
+  `test_canonical_source_reimports_a_previous_occurrences_json_unchanged`
+  (which asserts the reimport succeeds unchanged). Fixed by removing the
+  `source` parameter and its comparison from `_import_canonical` entirely;
+  only `dataset_id`/`retrieved_at`/`dataset_license`/`citation` are now
+  checked against the current command line, and the file's own `source` is
+  carried through to every record unchanged. Documented in both the
+  function's docstring and
+  `docs/data_cards/offline_occurrence_snapshot_v1.md`'s `--source canonical`
+  section. `test_canonical_source_rejects_metadata_that_does_not_match_the_
+  command_line` (dataset_id mismatch) is unaffected by this change and still
+  passes.
+- **Taxon-id/name ambiguity is preserved, never silently resolved.** When two
+  distinct `taxon_id`s share one normalized scientific name (or a
+  `submitted_names` entry), the importer keeps them as two separate
+  `TaxonomySnapshotItem`s and marks both `ambiguous=True`
+  (`_mark_ambiguous`), rather than merging them or picking a winner;
+  `LocalSnapshotTaxonomyProvider.resolve` surfaces this as
+  `ToolStatus.PARTIAL` with `candidate_matches` listing every match, exactly
+  mirroring how the fixture taxonomy provider and the deterministic pipeline
+  already treat ambiguity (`resolved_taxon.ambiguous` feeding
+  `review_reasons=["ambiguous_taxonomy"]`) — no new ambiguity-handling logic
+  was added to the pipeline itself.
+- **Snapshot identity and cross-file consistency are checked at
+  settings-build time, not at query time.** `validate_local_snapshot_bundle`
+  (called from both `build_taxonomy_provider` and
+  `build_occurrence_provider`, only when both providers are
+  `"local_snapshot"`) checks matching `dataset_id`/`source_sha256` and that
+  every occurrence record's `taxon_id` exists in the taxonomy bundle,
+  raising `ValueError` fast rather than letting a half-updated bundle
+  produce silent `TAXON_NOT_FOUND` results later.
+- **Atomic, deterministic writes.** Each of the three output files is
+  serialized with fixed indentation/`ensure_ascii=False`/Pydantic
+  field-declaration key order (`_serialize`), written to a same-directory
+  temp file (`_write_temp`), read back and SHA-256-verified, then committed
+  with `os.replace` (`_verify_and_commit`) — re-running the importer on
+  byte-identical input produces byte-identical output, and no failure
+  partway through a single file's write can leave a half-written file at
+  its final path.
+- No Profile v0.1 formula, threshold, fusion weight, or risk-precedence rule
+  was read, touched, or reinterpreted by any of this work.
+
+### Resources / frameworks / existing code reused
+
+- `interfaces/taxonomy.py::TaxonomyProvider`/`TaxonomyQuery`/
+  `TaxonomyResolution` and `interfaces/occurrence.py::OccurrenceProvider`/
+  `RawOccurrenceRecord`/`OccurrenceQuery` — the new provider and importer
+  produce/consume these existing types unchanged.
+- `providers/occurrence_local_snapshot.py::LocalSnapshotOccurrenceProvider`
+  (already existed from Milestone 1) — reused unmodified as the occurrence
+  side of the new bundle; only its taxonomy-side counterpart is new.
+- `orchestration/pipeline.py::run_assessment`,
+  `priors/geo_nearest_distance.py::NearestDistanceGeoPriorModel`,
+  `suitability/null_model.py::NullSuitabilityModel`,
+  `risk/policy.py::DeterministicRiskPolicy` — used as-is, unmodified, by the
+  new integration tests and by the `assess` CLI example run below.
+- `schemas/common.py::Issue`/`ToolResult`, `schemas/enums.py::IssueCode`/
+  `ToolStatus` — reused by `LocalSnapshotTaxonomyProvider` exactly as
+  `taxonomy_fixture.py` uses them.
+- Pydantic v2 (`BaseModel`, `ConfigDict(extra="forbid")`, `Field`,
+  `field_validator`/`model_validator`), `tomllib`-based `S3Settings.load`
+  (unmodified), `argparse` (`cli.py`'s existing subparser pattern).
+
+### Files and components created or modified
+
+Created:
+
+- `src/s3_ecological/schemas/snapshot.py` (171 lines) — snapshot/report
+  Pydantic models.
+- `src/s3_ecological/ingestion/__init__.py` (7 lines) and
+  `src/s3_ecological/ingestion/occurrence_snapshot.py` (805 lines) — the
+  importer.
+- `src/s3_ecological/providers/taxonomy_local_snapshot.py` (101 lines) —
+  `LocalSnapshotTaxonomyProvider`.
+- `docs/data_cards/offline_occurrence_snapshot_v1.md` (151 lines) — field
+  mappings, rejection codes, snapshot-identity rules, failure semantics,
+  known limitations.
+- `tests/fixtures/importer/gbif_small.csv`, `ala_small.tsv`,
+  `malformed_rows.csv` — small, hand-written synthetic fixtures (6, 4, and 7
+  lines respectively including header).
+- `tests/unit/test_occurrence_snapshot_import.py` (361 lines, 18 tests).
+- `tests/integration/test_imported_snapshot_pipeline.py` (239 lines, 5
+  tests).
+
+Modified:
+
+- `src/s3_ecological/settings.py` — added `taxonomy_snapshot_path: str |
+  None = None`.
+- `src/s3_ecological/providers/factory.py` — added
+  `validate_local_snapshot_bundle`; wired `local_snapshot` into
+  `build_taxonomy_provider` and cross-checked it from
+  `build_occurrence_provider`.
+- `src/s3_ecological/cli.py` — added the `import-occurrences` subcommand and
+  `_run_import_occurrences`.
+- `scripts/export_json_schemas.py` — registered the six new snapshot/report
+  models.
+- `config/sources.example.toml` — added a commented-out `local_snapshot`
+  configuration block.
+- `README.md` — documented the new subcommand, its exit codes, the
+  `ingestion/` package in the layout diagram, and two new known-limitation
+  bullets (synthetic-fixture-only data, exact-name-matching-only
+  resolution).
+
+### Functionality added
+
+- **`gbif`/`ala`/`generic_dwc` field mapping** — canonical field ← ordered
+  fallback header list, per source, exactly as tabulated in
+  `docs/data_cards/offline_occurrence_snapshot_v1.md` (e.g.
+  `taxon_id` ← `acceptedTaxonKey`/`taxonKey`/`taxonID` for `gbif`,
+  ← `acceptedConceptID`/`taxonConceptID`/`taxonID` for `ala`).
+- **`--source canonical`** — re-imports a previously written
+  `occurrences.json` unchanged (see the bugfix note above), rebuilding the
+  taxonomy bundle by grouping the file's own `(taxon_id,
+  scientific_name_raw)` pairs.
+- **Six row-rejection codes**: `missing_scientific_name`,
+  `missing_taxon_id`, `invalid_numeric_value`,
+  `negative_coordinate_uncertainty`, `non_finite_numeric_value`,
+  `invalid_record_schema` — one `ImportRejection` per bad row, never per
+  individual defect.
+- **`taxon_id` namespacing** (`gbif:...`/`ala:...`/`generic_dwc:...`) and
+  **deterministic generated record ids**
+  (`"generated:" + sha256(sorted header→value JSON)`, independent of row
+  order) when no id header is present.
+- **Snapshot identity**: `source_sha256` (input file bytes) shared across
+  all three output files; `snapshot_key =
+  "<dataset-id>:<sha256[:12]>:<mapping-version>"`.
+- **Cross-file consistency validation** at settings-build time
+  (`validate_local_snapshot_bundle`).
+- **`LocalSnapshotTaxonomyProvider`**: exact Unicode-NFKC-normalized,
+  case-folded name matching against both `scientific_name` and every
+  `submitted_names` entry; zero matches → `TAXON_NOT_FOUND` warning; exactly
+  one → `SUCCESS`; more than one → `PARTIAL` with `ambiguous=True` and every
+  candidate listed.
+- **Atomic, checksum-verified, deterministic output** for all three bundle
+  files.
+
+### How to use it
+
+```bash
+cd S3-Ecological-Agent
+python -m s3_ecological.cli import-occurrences \
+  --input tests/fixtures/importer/gbif_small.csv \
+  --source gbif \
+  --dataset-id demo-gbif-2026 \
+  --retrieved-at 2026-08-28T00:00:00+10:00 \
+  --dataset-license "CC-BY 4.0" \
+  --citation "Example GBIF occurrence download, demo-gbif-2026" \
+  --output-dir data/snapshots/example
+
+python -m s3_ecological.cli assess \
+  --input <path-to-ObservationRequest.json> \
+  --config config/sources.example.toml   # with its local_snapshot block uncommented
+```
+
+Exit codes: `0` every row accepted; `2` bundle written but with one or more
+row rejections recorded in `import-report.json`; `1` fatal error, no bundle
+written. See `README.md`'s new "Offline occurrence snapshot ingestion"
+section and `docs/data_cards/offline_occurrence_snapshot_v1.md` for the full
+reference.
+
+### Verification performed
+
+All of the following were **actually executed** in this session, from
+`S3-Ecological-Agent/`, against Python 3.13.14 (the only interpreter
+available in this environment):
+
+- `python -m pytest --cov=s3_ecological --cov-report=term-missing` →
+  **130 passed, 2 skipped** (same 2 pre-existing `pydantic_ai`-extra skips
+  as before) — **89% overall statement coverage**;
+  `ingestion/occurrence_snapshot.py` at 89% (uncovered lines are mostly
+  alternate fatal-error branches for conditions not separately unit-tested,
+  e.g. a subset of `_load_query_parameters`/`_resolve_format` error
+  messages), `providers/taxonomy_local_snapshot.py` at 88%,
+  `providers/factory.py` at 91%. `cli.py` remains at 0% direct pytest
+  coverage (as in the prior entry) but was exercised manually below.
+- `python -m ruff check .` → **All checks passed!** (this pass also fixed
+  ~30 pre-existing `E501`/`I001`/`F841` violations in
+  `ingestion/occurrence_snapshot.py`,
+  `tests/unit/test_occurrence_snapshot_import.py`, and
+  `tests/integration/test_imported_snapshot_pipeline.py` that predated ruff
+  ever having been run against this new code.)
+- `python -m pyright` → **0 errors, 0 warnings, 0 informations** (one real
+  finding fixed: `**_COMMAND_METADATA` unpacked directly into
+  `import_occurrence_snapshot(...)` in the unit-test file made pyright
+  believe a plain `dict[str, str]` could supply *any* keyword argument,
+  including the `bool`-typed `overwrite` — fixed by typing
+  `_COMMAND_METADATA` as a `TypedDict` with its four actual field names, so
+  pyright now knows precisely which keywords it supplies).
+- `python scripts/export_json_schemas.py` → exported 20 JSON Schema files
+  (up from 14; the 6 new ones are `OccurrenceSnapshot`,
+  `TaxonomySnapshotItem`, `TaxonomySnapshot`, `ImportRejection`,
+  `OutputFileChecksum`, `ImportReport`) to `json_schemas/` (gitignored) with
+  no errors.
+- `python -m s3_ecological.cli import-occurrences --input
+  tests/fixtures/importer/gbif_small.csv --source gbif --dataset-id
+  demo-cli-gbif --retrieved-at 2026-08-29T00:00:00+00:00 --dataset-license
+  "CC-BY 4.0" --citation "Demo run, synthetic fixture, not a real dataset."
+  --output-dir <scratch-dir>` → exit code **0**; printed `ImportReport` JSON
+  with `status: "completed"`, `accepted_record_count: 5`,
+  `rejected_record_count: 0`, and one non-fatal `unrecognized_boolean`
+  mapping warning (the fixture deliberately includes one unparseable
+  `isCaptive` value); wrote `occurrences.json`/`taxonomy.json`/
+  `import-report.json` to the scratch directory, verified present on disk.
+- `python -m s3_ecological.cli assess --input <request.json> --config
+  <settings.toml pointing occurrence_provider/taxonomy_provider =
+  "local_snapshot" at the snapshot just written>` → exit code **0**; printed
+  a well-formed `AssessmentResult` JSON document with
+  `status: "completed_with_warnings"`,
+  `resolved_taxon.ambiguous: true` (correctly reflecting the fixture's two
+  distinct `taxon_id`s sharing the name "Bactrocera dorsalis"),
+  `review_required: true`, `review_reasons: ["ambiguous_taxonomy"]`, and
+  `data_snapshot_versions.gbif` equal to the imported bundle's own
+  `snapshot_key` — confirming the full import → local-snapshot-providers →
+  `run_assessment` path end to end, offline, using no fixture-golden
+  shortcut.
+
+No test was reported as passing without being run. No network access,
+external API call, API key, or LLM/agent call was used by any command
+above. The scratch directories used for the two manual CLI runs
+(`D:/tmp_s3_demo/...`) were created and deleted outside the repository and
+are not part of this commit.
+
+### Extension and integration guidance
+
+- **A new source format**: add its field-mapping table and a `_map_<source>`
+  function in `ingestion/occurrence_snapshot.py`, add its name to
+  `SUPPORTED_SOURCES`, and add a fixture + unit test under
+  `tests/fixtures/importer/`/`tests/unit/` — no other module needs to
+  change.
+- **Fuzzy/synonym-aware taxonomy matching**: implement it as a new class
+  satisfying `interfaces/taxonomy.py::TaxonomyProvider` (or extend
+  `LocalSnapshotTaxonomyProvider` directly) and wire it in via
+  `providers/factory.py`; `LocalSnapshotTaxonomyProvider`'s exact-match
+  behavior stays available as the offline baseline.
+- **Incremental/append import**: not implemented — a re-import always
+  writes a fresh trio of files (see "Known limitations" below); a future
+  increment could add an `--append` mode that reads the existing bundle via
+  the same code path `--source canonical` already uses.
+- Every new public Pydantic model under `schemas/` should be added to
+  `scripts/export_json_schemas.py`'s `MODELS` list, exactly as the six new
+  snapshot models were.
+
+### Maintenance and modification guidance
+
+- Treat this Work.md entry's bugfix note on `_import_canonical` as the
+  authoritative account of why the code does not compare `source` on
+  canonical reimport — do not "fix" it back to a literal reading of
+  `EarlyDesign.md`'s single sentence without first re-reading this note and
+  the still-passing
+  `test_canonical_source_reimports_a_previous_occurrences_json_unchanged`.
+- Run `pytest`, `ruff check .`, and `pyright` before committing any change
+  to `src/s3_ecological/ingestion/`, `providers/taxonomy_local_snapshot.py`,
+  or `schemas/snapshot.py` — all three are at a clean baseline (130
+  passed/2 skipped, 0 ruff violations, 0 pyright errors) as of this entry.
+- Keep `ingestion/`, `providers/`, and `schemas/` outside the
+  deterministic-core import boundary check's `DETERMINISTIC_PACKAGES` list
+  — they are ingestion/provider code, not part of
+  `taxonomy/`/`occurrence/`/`priors/`/`suitability/`/`fusion/`/`risk/`/
+  `evidence/`, and must stay free to depend on `json`/`hashlib`/`tempfile`/
+  filesystem I/O that the deterministic core deliberately avoids.
+
+### Known limitations and deferred work
+
+- Exact-normalized-name matching only; no fuzzy matching, phonetic
+  matching, or external synonym database — inherited directly from
+  `EarlyDesign.md`'s scope for this milestone, not a shortcut taken here.
+- No incremental/append mode: every (re-)import writes a fresh trio of
+  files, optionally replacing the previous ones with `--overwrite`.
+- `--source canonical` still requires an exact match on
+  `dataset_id`/`retrieved_at`/`dataset_license`/`citation` against the
+  current command line; it cannot "merge" or partially update one field of
+  a previous run.
+- No cross-file filesystem transaction: a process kill between the three
+  individual atomic commits could still leave the trio partially updated;
+  `validate_local_snapshot_bundle` is the guard against consuming such a
+  partial bundle, not a mechanism that prevents it from occurring.
+- `ingestion/occurrence_snapshot.py` is at 89% branch coverage, not 100% —
+  the uncovered lines are alternate fatal-error message branches (e.g.
+  additional `_load_query_parameters`/`_resolve_format`/`_read_input` error
+  paths) that were reasoned through but not each given a dedicated unit
+  test in this pass.
+- No real occurrence or taxonomy dataset is included or was used anywhere
+  in this work — every fixture under `tests/fixtures/importer/` is
+  hand-written and synthetic. This entry makes no claim about real-world
+  ecological accuracy, GBIF/ALA API compatibility beyond the documented
+  field-mapping tables, or biosecurity decision performance.
+
+### Git record
+
+- Branch: `S3-design-offline-first` (no new branch was created; this is the
+  branch that was already checked out at the start of this session).
+- Commit message: recorded in the assistant's final report for this
+  session (this Work.md entry was written immediately before staging and
+  committing, so the hash could not be self-referentially included here).
+- Only the S3-Ecological-Agent files listed under "Files and components
+  created or modified" above, plus this Work.md entry, were staged and
+  committed — the user's own pre-existing untracked `LECTURE/`, `WEEK 4/`,
+  `WEEK 5/`, and `.gitignore` were left untouched and unstaged.

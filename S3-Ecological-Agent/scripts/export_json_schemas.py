@@ -33,6 +33,14 @@ from s3_ecological.schemas.response import (  # noqa: E402
     ResolvedTaxon,
     UncertaintyInfo,
 )
+from s3_ecological.schemas.snapshot import (  # noqa: E402
+    ImportRejection,
+    ImportReport,
+    OccurrenceSnapshot,
+    OutputFileChecksum,
+    TaxonomySnapshot,
+    TaxonomySnapshotItem,
+)
 from s3_ecological.settings import S3Settings  # noqa: E402
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "json_schemas"
@@ -51,6 +59,12 @@ MODELS = [
     Issue,
     EvidenceReference,
     S3Settings,
+    OccurrenceSnapshot,
+    TaxonomySnapshotItem,
+    TaxonomySnapshot,
+    ImportRejection,
+    OutputFileChecksum,
+    ImportReport,
 ]
 
 

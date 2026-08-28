@@ -1,8 +1,9 @@
 # FlyTech S3 Ecological Agent
 
 Offline-first ecological plausibility core for FlyTech's agricultural pest
-management platform. This package implements **Milestone 0 + Milestone 1**
-and the "core engineering prototype" definition of done from
+management platform. This package implements **Milestone 0 + Milestone 1 +
+Milestone 1.5 (offline occurrence snapshot ingestion)** and the "core
+engineering prototype" definition of done from
 [`EarlyDesign.md`](EarlyDesign.md) §23.1 — nothing from Milestones 2-4, and
 none of the conditional research-validation requirements in §23.2.
 
@@ -107,6 +108,39 @@ print(result.risk_state, result.review_required)
 `run_assessment` never raises for a handled input, never calls an LLM, and
 never makes a network request.
 
+### Offline occurrence snapshot ingestion (Milestone 1.5)
+
+Convert a locally-held GBIF/ALA/generic Darwin Core export (a CSV/TSV file
+you already downloaded - this command never fetches anything itself) into a
+local `occurrences.json` + `taxonomy.json` + `import-report.json` bundle:
+
+```bash
+python -m s3_ecological.cli import-occurrences \
+  --input tests/fixtures/importer/gbif_small.csv \
+  --source gbif \
+  --dataset-id demo-gbif-2026 \
+  --retrieved-at 2026-08-28T00:00:00+10:00 \
+  --dataset-license "CC-BY 4.0" \
+  --citation "Example GBIF occurrence download, demo-gbif-2026" \
+  --output-dir data/snapshots/example
+```
+
+Exit code `0` means every row was accepted; `2` means the bundle was still
+written but `import-report.json` records one or more row-level rejections;
+`1` means a fatal error occurred and no bundle was written. Then point
+`assess` at the resulting bundle, either via `config/sources.example.toml`'s
+commented-out `local_snapshot` block or directly:
+
+```bash
+python -m s3_ecological.cli assess \
+  --input request.json \
+  --config config/sources.example.toml
+```
+
+See [`docs/data_cards/offline_occurrence_snapshot_v1.md`](docs/data_cards/offline_occurrence_snapshot_v1.md)
+for the full field-mapping tables, row-rejection codes, and snapshot-identity
+rules.
+
 ## Verify
 
 ```bash
@@ -128,6 +162,8 @@ src/s3_ecological/
                   risk-policy, and LLM providers
   providers/      fixture / in-memory / local-snapshot / deferred-live
                   implementations of the provider Protocols
+  ingestion/      offline GBIF/ALA/generic-DwC -> local snapshot importer
+                  (Milestone 1.5; outside the deterministic-core boundary)
   taxonomy/       name -> ResolvedTaxon resolution
   occurrence/     cleaning, quality flags, haversine distance
   priors/         v0.1 nearest-clean-occurrence geographic baseline
@@ -139,7 +175,7 @@ src/s3_ecological/
   agent/          optional offline mock LLM provider + typed tool wrappers
                   + a guarded, optional pydantic_ai adapter
   api/            documented stub only - no HTTP API in this prototype
-  cli.py          `s3-ecological` demo/assess commands
+  cli.py          `s3-ecological` demo/assess/import-occurrences commands
   settings.py     S3Settings (Prototype Implementation Profile v0.1 defaults)
 tests/
   unit/           schemas, cleaning, distance, fusion, risk, evidence, taxonomy
@@ -168,6 +204,12 @@ data/, models/    empty placeholders; no real data or model artifact is
 - `live_gbif`/`live_ala` occurrence providers are structurally wired but
   deliberately unimplemented: every query returns `provider_not_configured`.
 - No real occurrence or taxonomy data is committed; only the fixture-backed
-  providers under `providers/` and `fixtures/golden/` are used.
+  providers under `providers/` and `fixtures/golden/` are used, and the
+  Milestone 1.5 importer's own test fixtures under `tests/fixtures/importer/`
+  are hand-written synthetic rows, not a real dataset extract.
+- The offline importer's name resolution (`import-occurrences` and
+  `LocalSnapshotTaxonomyProvider`) is exact-normalized-name matching only -
+  no fuzzy matching, no synonym database beyond what the input file itself
+  states via `acceptedScientificName`.
 - `coordinate_coarsening_decimals` is declared in `S3Settings` but not yet
   wired into any code path in this prototype.
