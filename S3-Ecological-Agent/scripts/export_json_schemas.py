@@ -19,6 +19,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from s3_ecological.schemas.common import EvidenceReference, Issue, ToolResult  # noqa: E402
+from s3_ecological.schemas.experiment import (  # noqa: E402
+    AuthorisationDeclaration,
+    ExcludedOccurrenceEntry,
+    GeoExperimentConfig,
+    GeoExperimentReadinessReport,
+    ImportReportIdentity,
+    OccurrenceSnapshotIdentity,
+    SpatialSplitConfig,
+    SpatialSplitManifest,
+    SplitAssignmentRow,
+    TaxonomySnapshotIdentity,
+)
 from s3_ecological.schemas.request import (  # noqa: E402
     ExternalAgentEvidence,
     Location,
@@ -65,6 +77,16 @@ MODELS = [
     ImportRejection,
     OutputFileChecksum,
     ImportReport,
+    AuthorisationDeclaration,
+    SpatialSplitConfig,
+    GeoExperimentConfig,
+    OccurrenceSnapshotIdentity,
+    TaxonomySnapshotIdentity,
+    ImportReportIdentity,
+    SplitAssignmentRow,
+    ExcludedOccurrenceEntry,
+    SpatialSplitManifest,
+    GeoExperimentReadinessReport,
 ]
 
 

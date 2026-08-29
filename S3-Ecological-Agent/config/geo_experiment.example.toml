@@ -1,0 +1,69 @@
+# Example `prepare-geo-experiment` configuration.
+#
+# Copy to a real path and pass it via `--config path/to/file.toml`. This file
+# is loaded directly into `s3_ecological.schemas.experiment.GeoExperimentConfig`
+# (not through S3Settings), so every key below must be one this schema
+# accepts - unknown keys are rejected (`extra="forbid"`).
+#
+# This command is an offline pre-Milestone 2 preparation gate
+# (EarlyDesign.md section 11.4; DesignSuggestionLog.md "2026-08-29 17:16
+# Australia/Sydney"). It reads an already-imported Milestone 1.5 bundle
+# (`occurrences.json` / `taxonomy.json` / `import-report.json`), reuses the
+# existing cleaning and bundle-consistency checks, and writes a deterministic
+# spatial train/val/test split plus a readiness report. It never trains a
+# model, calibrates a fusion weight or risk threshold, or implements S1.
+
+schema_version = "1.0.0"
+experiment_id = "example-geo-experiment-2026-08-29"
+
+# Must be an RFC 3339 timestamp with a timezone offset (naive timestamps are
+# rejected) - this is recorded verbatim in both output artifacts.
+generated_at = 2026-08-29T00:00:00+10:00
+
+# Paths to the three files written by `s3-ecological import-occurrences`
+# (Milestone 1.5). All three are read, checksummed, and cross-checked for a
+# shared dataset_id/source_sha256 before any split is built.
+occurrence_snapshot_path = "data/snapshots/example/occurrences.json"
+taxonomy_snapshot_path = "data/snapshots/example/taxonomy.json"
+import_report_path = "data/snapshots/example/import-report.json"
+
+# The four TF4 genera (WEEK 4/FlyTech_S3_Resource_Map.md section 3.5). Omit
+# this key to use the same default. Records outside this list are dropped
+# before cleaning and splitting, and are not counted as "excluded".
+target_taxa = ["Anastrepha", "Bactrocera", "Ceratitis", "Rhagoletis"]
+
+geographic_scope = "global"
+
+# "real_world_data" or "synthetic_engineering_fixture". Set this explicitly -
+# it is never inferred from the data itself. A synthetic-fixture run always
+# reports `engineering_fixture_only`, regardless of how clean the data looks.
+data_nature = "real_world_data"
+
+# Path to an S1 (visual-identification) evaluation output, if one exists.
+# This tool never validates that file's contents - S1 is not implemented yet
+# (DesignSuggestionLog.md "S1 boundary") - it only records whether a path was
+# supplied. Leave unset (or comment out) when no S1 output exists yet.
+# s1_evaluation_input_path = "data/experiments/example/s1_predictions.json"
+
+[authorisation]
+# "authorised", "not_authorised", or "unknown" (default). Never inferred from
+# a dataset's public licence - this is the project owner's/supervisor's own
+# permission to use this dataset for this prototype experiment.
+status = "unknown"
+# authorisation_reference = "supervisor-email-2026-08-20"
+# purpose = "S3 offline geographic-prior prototype, Milestone 2 preparation"
+# approving_role = "project supervisor"
+
+[spatial_split]
+block_strategy = "latitude_longitude_grid_v0.1"
+grid_size_degrees = 1.0
+train_ratio = 0.60
+validation_ratio = 0.20
+test_ratio = 0.20
+seed = 42
+
+# Forwarded verbatim to `S3Settings.load(overrides=...)` so cleaning
+# thresholds stay governed by the one existing settings model. Example:
+# override the coordinate-uncertainty threshold used during cleaning.
+[settings_overrides]
+# max_coordinate_uncertainty_m = 50000.0

@@ -15,6 +15,11 @@ Three subcommands:
   taxonomy snapshot bundle that ``assess`` can then query with
   ``occurrence_provider``/``taxonomy_provider = "local_snapshot"``
   (Milestone 1.5, EarlyDesign.md "offline occurrence snapshot ingestion").
+- ``prepare-geo-experiment``: builds a deterministic spatial train/val/test
+  split and a readiness report from an already-imported Milestone 1.5
+  bundle. This is a pre-Milestone 2 preparation gate (EarlyDesign.md
+  section 11.4 and 22) - it never trains a model, calibrates a fusion
+  weight or risk threshold, or implements S1.
 
 All subcommands are offline: no network access and no LLM call is made.
 ``analysis_id``/``generated_at`` are generated here, at the process
@@ -30,6 +35,13 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from s3_ecological.experiments.prepare import GeoExperimentFatalError, prepare_geo_experiment
+from s3_ecological.experiments.readiness import (
+    REASON_EMPTY_REQUIRED_SPLIT,
+    REASON_MISSING_TARGET_TAXON_COVERAGE,
+    REASON_NO_USABLE_OCCURRENCE_RECORDS,
+    REASON_SINGLE_BLOCK_ONLY,
+)
 from s3_ecological.fixtures.golden_loader import GOLDEN_CASE_NAMES, load_golden_case
 from s3_ecological.ingestion.occurrence_snapshot import (
     ImportFatalError,
@@ -54,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_assess(args.input, args.output, args.config)
     if args.command == "import-occurrences":
         return _run_import_occurrences(args)
+    if args.command == "prepare-geo-experiment":
+        return _run_prepare_geo_experiment(args)
 
     parser.print_help()
     return 1
@@ -117,6 +131,23 @@ def _build_parser() -> argparse.ArgumentParser:
         "--overwrite",
         action="store_true",
         help="replace an existing occurrences.json/taxonomy.json/import-report.json",
+    )
+
+    prepare_parser = subparsers.add_parser(
+        "prepare-geo-experiment",
+        help=(
+            "build a deterministic spatial train/val/test split and readiness report "
+            "from an already-imported Milestone 1.5 bundle (pre-Milestone 2 gate)"
+        ),
+    )
+    prepare_parser.add_argument(
+        "--config", required=True, help="path to a geo-experiment TOML config"
+    )
+    prepare_parser.add_argument("--output-dir", required=True)
+    prepare_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="replace an existing spatial-split-manifest.json/readiness-report.json",
     )
 
     return parser
@@ -183,6 +214,31 @@ def _run_import_occurrences(args: argparse.Namespace) -> int:
 
     print(json.dumps(report.model_dump(mode="json"), indent=2))
     return 2 if report.rejected_record_count else 0
+
+
+_DATA_QUALITY_REASON_CODES = frozenset(
+    {
+        REASON_NO_USABLE_OCCURRENCE_RECORDS,
+        REASON_MISSING_TARGET_TAXON_COVERAGE,
+        REASON_SINGLE_BLOCK_ONLY,
+        REASON_EMPTY_REQUIRED_SPLIT,
+    }
+)
+
+
+def _run_prepare_geo_experiment(args: argparse.Namespace) -> int:
+    try:
+        report = prepare_geo_experiment(
+            config_path=args.config, output_dir=args.output_dir, overwrite=args.overwrite
+        )
+    except GeoExperimentFatalError as exc:
+        print(f"prepare-geo-experiment: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(report.model_dump(mode="json"), indent=2))
+    if _DATA_QUALITY_REASON_CODES.intersection(report.reason_codes):
+        return 2
+    return 0
 
 
 if __name__ == "__main__":

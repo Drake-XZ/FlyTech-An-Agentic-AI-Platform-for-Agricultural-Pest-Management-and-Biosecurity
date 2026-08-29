@@ -1204,3 +1204,286 @@ project owner's request. This is a documentation-organization change only.
   historical log wording remains unchanged.
 - No test suite was run because this change only renames and cross-references a
   Markdown documentation file.
+
+---
+
+## 2026-08-29 18:20 Australia/Sydney
+
+### Scope
+
+Implemented the owner-approved "offline pre-Milestone 2 data-readiness and
+spatial-split builder", per the `DesignSuggestionLog.md` 2026-08-29 17:16
+entry that was marked as an owner-approved implementation requirement. This
+is a preparation *gate* for Milestone 2, not any part of Milestone 2 itself:
+it never trains a geographic model, never calibrates a fusion weight or risk
+threshold, and does not implement S1/S5, environmental suitability, a live
+GBIF/ALA client, or an LLM. `EarlyDesign.md` §11.4 and §22 were updated in an
+earlier part of this same session to record the approved requirement; this
+entry documents the implementation, testing, and validation that followed.
+
+### Modification order
+
+1. Added `schemas/experiment.py` (enums, `AuthorisationDeclaration`,
+   `SpatialSplitConfig`, `GeoExperimentConfig`, snapshot-identity models,
+   `SplitAssignmentRow`, `ExcludedOccurrenceEntry`, `SpatialSplitManifest`,
+   `GeoExperimentReadinessReport`) — the typed contract every other new
+   module and test validates against.
+2. Added `experiments/spatial_split.py` — pure, file-I/O-free grid/block/
+   split logic (`LatitudeLongitudeGridV0` implementing the
+   `latitude_longitude_grid_v0.1` formula, `SplitRatios`,
+   `OccurrenceForSplit`, deterministic hash-based `assign_records_to_splits`,
+   `compute_split_identity`), plus the `SpatialBlockStrategy` `Protocol`
+   extension point for future H3/equal-area/state/ecoregion strategies.
+3. Added `experiments/readiness.py` — pure status/reason-code derivation
+   (authorisation check, S1-input-missing check, taxon-coverage check,
+   single-block/empty-split checks) with no file I/O.
+4. Added `experiments/prepare.py` — the orchestration module that loads the
+   TOML config, loads and cross-checks the Milestone 1.5 bundle via
+   `validate_local_snapshot_bundle`, applies `S3Settings`/`clean_occurrences`
+   unchanged, calls `spatial_split.py`/`readiness.py`, and performs atomic,
+   checksum-verified writes of the two output artifacts. This module was not
+   named in the original design-suggestion sketch (which only mentioned
+   `readiness.py`/`spatial_split.py`/`schemas/experiment.py`); it was added
+   as a thin composition layer so file I/O stays fully separated from the
+   pure validation and spatial-split logic, per the engineering requirements
+   in the same design-log entry. The deviation is recorded in this module's
+   own docstring as well as here.
+5. Added the `prepare-geo-experiment` subcommand to `cli.py`, wired to the
+   documented exit-code policy (`0`/`1`/`2`).
+6. Added `config/geo_experiment.example.toml` and
+   `docs/data_cards/geo_experiment_readiness_v0.1.md`.
+7. Added `tests/unit/test_spatial_split.py` (grid/hash/split unit tests),
+   `tests/unit/test_experiment_readiness.py` (pure readiness-derivation unit
+   tests), `tests/unit/test_experiment_schemas.py` (schema validation unit
+   tests), and `tests/integration/test_prepare_geo_experiment.py` (12
+   end-to-end tests against a real imported Milestone 1.5 bundle, including
+   a dedicated AST-based test that no file under `experiments/` imports
+   `httpx`/`requests`/`urllib3`/`aiohttp`).
+8. Added the 10 new schemas to `scripts/export_json_schemas.py`'s `MODELS`
+   list.
+9. Ran `pytest`/`ruff`/`pyright`/schema export/a live CLI smoke test, fixed
+   every finding (see "Verification performed" below), and re-ran until all
+   were clean.
+
+### Methods and design decisions
+
+- **Whole-block, never per-record, split assignment.** Every usable, cleaned
+  occurrence is mapped to a `latitude_longitude_grid_v0.1` block id; the
+  *block* (not the record) is then assigned to train/validation/test via
+  `assign_split_for_unit(hash_unit_interval(seed, block_id), ratios)`. A
+  block already assigned is never reassigned, so no block ever spans two
+  splits, and the same `(seed, config)` always yields byte-identical output.
+- **Pole/antimeridian handling in `latitude_longitude_grid_v0.1`.** Longitude
+  is collapsed to `-180.0` exactly at `latitude in (-90.0, 90.0)` (so every
+  point at a pole falls in one block regardless of longitude) or at
+  `longitude == 180.0` (so the antimeridian doesn't create a spurious extra
+  column); latitude index is clamped to the last row
+  (`min(latitude_cell_count - 1, floor((latitude+90)/b))`) so `latitude=90.0`
+  does not create a size-1 extra row. A near-pole but non-exact latitude
+  (e.g. `89.9`) intentionally does *not* get the longitude collapse — this
+  was re-derived and confirmed correct, not a bug, while fixing a flawed
+  test assumption (see "Verification performed").
+- **Protocol extension point uses read-only properties, not attributes.**
+  `SpatialBlockStrategy.name`/`.version` are declared as `@property` methods
+  rather than plain `str` annotations, specifically so a
+  `@dataclass(frozen=True)` implementation (`LatitudeLongitudeGridV0`, whose
+  fields are read-only) satisfies the Protocol structurally under pyright.
+  A plain-attribute Protocol declaration implies mutability and is
+  incompatible with a frozen dataclass's read-only fields.
+- **Status precedence is deterministic and gate-like, not a soft warning
+  list.** Missing/unauthorised Milestone 1.5 outputs always resolve to
+  `not_run_missing_authorised_data` (reason `missing_authorised_s1_outputs`)
+  regardless of what else is true about the data; synthetic-fixture data is
+  always stamped `engineering_fixture_only` and the report's fixed
+  `statement` field ("No model was trained, no fusion weight or risk
+  threshold was calibrated, and no biological or biosecurity performance was
+  measured by this run.") is always present, so no downstream reader can
+  mistake a readiness report for a model-evaluation result.
+- **Atomic, checksum-verified writes.** Each output file is written to a
+  `tempfile.mkstemp` temp file in the target directory, the temp file is
+  read back and its SHA-256 verified against what was intended to be
+  written, and only then is it moved into place with `os.replace()` — the
+  same pattern already used by the Milestone 1.5 importer, reused unchanged
+  in spirit for consistency.
+
+### Resources / frameworks / existing code reused
+
+- `validate_local_snapshot_bundle` (Milestone 1.5, `ingestion/` or
+  `providers/` — unchanged) for bundle schema/checksum/identity validation.
+- `S3Settings` and `clean_occurrences` (deterministic core — unchanged) for
+  cleaning cross-checks; `effective_cleaning_settings` in both output
+  artifacts records exactly which settings were applied.
+- The Milestone 1.5 atomic-write pattern (`tempfile.mkstemp` → checksum
+  verify on readback → `os.replace()`), reused for the two new output files.
+- The existing `TypedDict`-for-`**kwargs`-unpacking pattern already used in
+  `tests/unit/test_occurrence_snapshot_import.py`, replicated in the new
+  integration test file to keep pyright precise about which keyword
+  arguments a typed dict literal actually supplies.
+- `tests/fixtures/importer/gbif_small.csv` (existing, hand-written,
+  synthetic) reused as the integration test's primary input bundle; one new
+  hand-written 2-row `generic_dwc` CSV was added inline in the new test file
+  for the single-spatial-block test case only.
+
+### Files and components created or modified
+
+- `src/s3_ecological/schemas/experiment.py` (new)
+- `src/s3_ecological/experiments/__init__.py`, `spatial_split.py`,
+  `readiness.py`, `prepare.py` (new package)
+- `src/s3_ecological/cli.py` (added `prepare-geo-experiment` subcommand and
+  its exit-code policy; two unrelated line-length reflows found by ruff)
+- `config/geo_experiment.example.toml` (new)
+- `docs/data_cards/geo_experiment_readiness_v0.1.md` (new)
+- `scripts/export_json_schemas.py` (added the 10 new experiment schemas to
+  `MODELS`)
+- `tests/unit/test_spatial_split.py`, `test_experiment_readiness.py`,
+  `test_experiment_schemas.py` (new)
+- `tests/integration/test_prepare_geo_experiment.py` (new)
+- `DesignSuggestionLog.md`, `EarlyDesign.md` §11.4/§22 (updated earlier in
+  this session; not re-modified in this entry's work)
+- `README.md` (this entry's own documentation update — see the "Offline
+  pre-Milestone 2 data-readiness and spatial-split builder" section)
+
+### How to use it
+
+```bash
+python -m s3_ecological.cli prepare-geo-experiment \
+  --config config/geo_experiment.example.toml \
+  --output-dir data/experiments/<experiment-id>
+```
+
+See the README section of the same name and
+`docs/data_cards/geo_experiment_readiness_v0.1.md` for the full status/
+reason-code vocabulary and configuration reference.
+
+### Verification performed
+
+- `python -m pytest --cov=s3_ecological --cov-report=term-missing` →
+  **193 passed, 2 skipped** (the 2 skips are pre-existing, for the optional
+  `pydantic_ai` extra, unrelated to this work), **90% overall coverage**;
+  `experiments/readiness.py`, `experiments/spatial_split.py`, and
+  `schemas/experiment.py` are each at **100%** coverage;
+  `experiments/prepare.py` is at **88%** coverage (22 missed lines, all
+  defensive/error-path branches such as alternate config-load/snapshot-load
+  exception messages, not exercised by the fixture-only test suite). No
+  pre-existing test was broken.
+- `python -m ruff check .` → **All checks passed!**, after fixing 14
+  violations found across this new code (5 auto-fixed by `ruff check . --fix`:
+  `.encode("utf-8")` → `.encode()`, `datetime.timezone.utc` →
+  `datetime.UTC`; 9 fixed manually by reflowing lines over the 100-character
+  limit in `prepare.py`, `spatial_split.py`, `cli.py`, and two test files).
+- `python -m pyright` → **0 errors, 0 warnings, 0 informations**, after
+  fixing 13 findings: 11 were a single root cause (the `SpatialBlockStrategy`
+  Protocol's `name`/`version` declared as plain attributes was incompatible
+  with the frozen-dataclass `LatitudeLongitudeGridV0`'s read-only fields;
+  fixed once, at the Protocol, by redeclaring them as read-only
+  `@property` methods); 2 were in the new integration test file (an
+  implicit-Optional default parameter, and a `**kwargs`-unpacked untyped
+  dict literal that made pyright check an unrelated `bool` parameter — both
+  fixed the same way the existing importer test file already does).
+- One test bug was self-caught and fixed before it reached this log: a
+  north-pole test originally compared `block_id_for(90.0, 0.0)` against
+  `block_id_for(89.9, 0.0)`, which is not a valid comparison because the
+  implementation's pole-longitude-collapse applies only at exactly
+  `latitude == 90.0`, not at near-pole latitudes — the near-pole point keeps
+  its real longitude and lands in a different, non-clamped block. Rewritten
+  to assert the pole's exact block id directly
+  (`grid.block_id_for(90.0, 5.0) == "grid-v0.1:1.0:179:0"`), isolating the
+  latitude-clamp behavior from the separate longitude-collapse rule. This
+  was a flaw in the test's assumption, not in the implementation.
+- `python scripts/export_json_schemas.py` → succeeded, exported 30 JSON
+  Schema files (20 pre-existing + the 10 new experiment models) to
+  `json_schemas/` (gitignored; deleted after verification, not part of this
+  commit).
+- `python -m s3_ecological.cli prepare-geo-experiment --config
+  <synthetic-config> --output-dir <scratch-dir>` → live-verified end to end
+  using a bundle genuinely produced by the real `import-occurrences` CLI
+  subcommand against `tests/fixtures/importer/gbif_small.csv`. Confirmed:
+  `Ceratitis` correctly reported in `missing_target_taxa` (its one record is
+  excluded during cleaning for missing `coordinate_uncertainty_m`, correctly
+  triggering `missing_target_taxon_coverage`); `overall_milestone_2_status`
+  and `occurrence_data_status` both `engineering_fixture_only`; the fixed
+  `statement` disclaimer present; identical `configuration_digest` in both
+  output artifacts; exit code **2** (data-quality reason codes present, no
+  fatal error).
+- **Determinism check**: ran the same config into two separate scratch
+  output directories and diff'd both `spatial-split-manifest.json` and
+  `readiness-report.json` byte-for-byte — **identical** in both files,
+  confirming determinism at the full CLI/orchestration level, not only at
+  the pure-function unit-test level.
+- **Overwrite-refusal check**: re-running without `--overwrite` against an
+  existing output directory correctly raised `GeoExperimentFatalError` (exit
+  code **1**) and wrote nothing; re-running the same config with
+  `--overwrite` correctly succeeded (exit code **2**, same residual
+  data-quality reason codes as before).
+- The scratch directories used for the CLI smoke test
+  (`.tmp_cli_smoke/`) and the schema-export output (`json_schemas/`) were
+  both deleted after verification and are not part of this commit.
+
+### Extension and integration guidance
+
+- **A new spatial-block strategy** (H3, equal-area, state/ecoregion): add a
+  class satisfying `experiments/spatial_split.py::SpatialBlockStrategy`
+  (`name`/`version` read-only properties, `block_id_for`,
+  `identity_parameters`) and select it in `prepare.py`'s strategy
+  construction — `readiness.py`, the CLI, and the output schemas need no
+  change.
+- **A new readiness reason code**: add the constant and its derivation to
+  `experiments/readiness.py`, add it to `cli.py`'s
+  `_DATA_QUALITY_REASON_CODES` frozenset if it should map to exit code `2`,
+  and add a unit test in `test_experiment_readiness.py`.
+- **A future evaluation methodology built on top of this gate** (e.g. an
+  actual geographic-model training/evaluation step) should consume
+  `spatial-split-manifest.json`'s block-to-split assignment as a read-only
+  input and must not weaken the whole-block-never-split-across-splits
+  invariant this module guarantees.
+- Every new public Pydantic model under `schemas/` should be added to
+  `scripts/export_json_schemas.py`'s `MODELS` list, exactly as the 10 new
+  experiment models were.
+
+### Maintenance and modification guidance
+
+- Keep `experiments/` outside the deterministic-core import boundary check's
+  `DETERMINISTIC_PACKAGES` list, and keep the dedicated
+  `test_no_network_client_is_reachable_from_the_experiments_package` AST
+  test passing — it is the mechanical guardrail against a future
+  contributor adding a live GBIF/ALA/HTTP dependency to this package.
+- Do not modify `GeoPriorModel`, the fusion formulas, risk-state precedence,
+  Profile v0.1 parameters, or the `AssessmentResult` output contract to
+  support this feature — none of that was touched, and none of it should
+  need to be for any future extension of this readiness gate.
+- Run `pytest`, `ruff check .`, and `pyright` before committing any change to
+  `src/s3_ecological/experiments/` or `schemas/experiment.py` — all three are
+  at a clean baseline (193 passed/2 skipped/90% coverage, 0 ruff violations,
+  0 pyright errors) as of this entry.
+
+### Known limitations and deferred work
+
+- This gate does not implement S1, environmental suitability, or Milestone
+  2's geographic model itself; it only prepares and reports on the data a
+  future Milestone 2 implementation would need. `not_run_missing_authorised_
+  data` is the expected, correct status until S1 exists and produces
+  authorised outputs — not a defect in this implementation.
+- `latitude_longitude_grid_v0.1` is an equal-angle grid, not equal-area, and
+  is not a production ecological-region definition — this is documented in
+  both the data card and the strategy's own docstring.
+- `experiments/prepare.py` is at 88%, not 100%, branch coverage; the
+  uncovered lines are alternate exception-message branches in config/
+  snapshot loading and the atomic-write/verify helpers, reasoned through but
+  not each given a dedicated unit test in this pass.
+- No real GBIF/ALA occurrence or taxonomy dataset was used anywhere in this
+  work — every fixture is hand-written and synthetic, and every synthetic
+  result is stamped `engineering_fixture_only`. This entry makes no claim
+  about real-world ecological or biosecurity accuracy.
+
+### Git record
+
+- Branch: `S3-design-offline-first` (no new branch was created; this is the
+  branch that was already checked out at the start of this session).
+- Commit message: recorded in the assistant's final report for this session
+  (this WorkLog.md entry was written immediately before staging and
+  committing, so the hash could not be self-referentially included here).
+- Only the S3-Ecological-Agent files listed under "Files and components
+  created or modified" above, plus this WorkLog.md entry and the README.md
+  update, were staged and committed. The repository root's own untracked
+  `.gitignore` (one level above `S3-Ecological-Agent/`) was explicitly left
+  untouched and unstaged, per the project owner's standing instruction.

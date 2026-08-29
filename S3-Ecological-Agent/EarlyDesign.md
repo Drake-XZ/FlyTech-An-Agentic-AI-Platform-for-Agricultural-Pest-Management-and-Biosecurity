@@ -585,6 +585,26 @@ For the current prototype, start with a small genus-level local snapshot or synt
 
 Random row splits are insufficient. At minimum, implement spatial blocks, geographic regions, or state/ecoregion holdouts. Where enough time coverage exists, add temporal holdout. Prevent leakage from the same occurrence, photographer, locality, source dataset, or near-duplicate image across splits.
 
+**Offline pre-Milestone 2 readiness gate (normative, approved 29 August 2026; see `DesignSuggestionLog.md`).** Before any Milestone 2 geographic-prior experiment is trained, run the offline `prepare-geo-experiment` command:
+
+```
+python -m s3_ecological.cli prepare-geo-experiment \
+  --config config/geo_experiment.example.toml \
+  --output-dir data/experiments/<experiment-id>
+```
+
+This command is a data-readiness and spatial-split builder, not a modelling step. It reuses the existing Milestone 1.5 `occurrences.json`/`taxonomy.json`/`import-report.json` bundle, `validate_local_snapshot_bundle`, `S3Settings`, and `clean_occurrences` as the sole cleaning authority; validates the explicit data-authorisation declaration, schema, checksums, snapshot identity, and taxonomy IDs; resolves coverage of the four TF4 genera (`Anastrepha`, `Bactrocera`, `Ceratitis`, `Rhagoletis`); assigns whole spatial blocks (never individual records) to deterministic train/validation/test splits using the `latitude_longitude_grid_v0.1` profile:
+
+```
+longitude_for_index = -180 if longitude == 180 or latitude in (-90, 90) else longitude
+latitude_cell_count  = ceil(180 / b)
+latitude_index       = min(latitude_cell_count - 1, floor((latitude + 90) / b))
+longitude_index      = floor((longitude_for_index + 180) / b)
+block_id             = "grid-v0.1:<b>:<latitude_index>:<longitude_index>"
+```
+
+with `b` finite and in `(0, 10]`, and each block deterministically assigned to a split by hashing `"<seed>:<block_id>"` (SHA-256, first 8 bytes as an unsigned 64-bit integer divided by 2^64) against configured `train_ratio`/`validation_ratio`/`test_ratio` (defaults 0.60/0.20/0.20, `seed=42`, uncalibrated reproducibility defaults). It writes `spatial-split-manifest.json` and `readiness-report.json` with the status vocabulary `ready_for_geo_prior_engineering`, `not_run_missing_authorised_data`, `not_ready_data_quality`, `engineering_fixture_only`, and `ready_for_approved_milestone_2_experiment`. When Milestone 1's S1 identification outputs are absent, `overall_milestone_2_status` must be `not_run_missing_authorised_data` with reason code `missing_authorised_s1_outputs`, regardless of occurrence-data readiness. This tool must not train a geographic model, calibrate fusion weights or risk thresholds, or implement S1, S5, an environmental suitability model, live GBIF/ALA access, or an LLM, and synthetic engineering fixtures must be reported as `engineering_fixture_only`, never as a real ecological or biosecurity accuracy result.
+
 ## 12. Modelling Requirements
 
 ### 12.1 Baseline A: occurrence-distance heuristic
@@ -1095,6 +1115,7 @@ Do not commit API keys, restricted data, large raw datasets, or media without ve
 
 ### Milestone 2 - geographic reranking experiment
 
+- Before training, run the offline `prepare-geo-experiment` readiness gate (section 11.4) and confirm `overall_milestone_2_status` is not `not_run_missing_authorised_data` or `not_ready_data_quality`; this gate prepares data and spatial splits only and does not itself satisfy this milestone.
 - Reproduce `geo_prior` on its example data.
 - Train or adapt a fruit-fly geographic prior.
 - Implement soft fusion with S1 outputs.

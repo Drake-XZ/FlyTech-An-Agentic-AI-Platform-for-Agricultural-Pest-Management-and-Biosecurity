@@ -2,10 +2,12 @@
 
 Offline-first ecological plausibility core for FlyTech's agricultural pest
 management platform. This package implements **Milestone 0 + Milestone 1 +
-Milestone 1.5 (offline occurrence snapshot ingestion)** and the "core
-engineering prototype" definition of done from
-[`EarlyDesign.md`](EarlyDesign.md) §23.1 — nothing from Milestones 2-4, and
-none of the conditional research-validation requirements in §23.2.
+Milestone 1.5 (offline occurrence snapshot ingestion)**, plus an **offline
+pre-Milestone 2 data-readiness and spatial-split builder** (see
+[`EarlyDesign.md`](EarlyDesign.md) §11.4 and §22), and the "core engineering
+prototype" definition of done from `EarlyDesign.md` §23.1 — nothing else from
+Milestones 2-4, and none of the conditional research-validation requirements
+in §23.2.
 
 It runs with **no external LLM, no API credentials, and no network access**,
 using local fixtures and a deterministic geographic baseline. It does not
@@ -141,6 +143,55 @@ See [`docs/data_cards/offline_occurrence_snapshot_v1.md`](docs/data_cards/offlin
 for the full field-mapping tables, row-rejection codes, and snapshot-identity
 rules.
 
+### Offline pre-Milestone 2 data-readiness and spatial-split builder
+
+Given an already-imported Milestone 1.5 bundle, build a deterministic
+spatial train/val/test split and a readiness report — a *preparation gate*,
+not a model-training or model-evaluation step:
+
+```bash
+python -m s3_ecological.cli prepare-geo-experiment \
+  --config config/geo_experiment.example.toml \
+  --output-dir data/experiments/example-experiment
+```
+
+This command:
+
+- reuses the Milestone 1.5 bundle validation (`validate_local_snapshot_bundle`)
+  and the deterministic-core cleaning rules (`S3Settings` + `clean_occurrences`)
+  unchanged;
+- checks authorisation declarations, schema/checksum/identity consistency
+  between `occurrences.json`/`taxonomy.json`/`import-report.json`, taxonomy-ID
+  resolution, and TF4 target-genus coverage (`Anastrepha`, `Bactrocera`,
+  `Ceratitis`, `Rhagoletis`);
+- assigns whole spatial blocks — never individual records — to train/val/test
+  using the `latitude_longitude_grid_v0.1` strategy and a seeded hash, so a
+  block is never split across two splits and a re-run with unchanged inputs
+  produces byte-identical output;
+- writes `spatial-split-manifest.json` and `readiness-report.json` to
+  `--output-dir` via atomic, checksum-verified writes.
+
+It **never** trains a geographic model, calibrates a fusion weight or risk
+threshold, implements S1/S5 or environmental suitability, calls a live
+GBIF/ALA API, or uses an LLM — and it never reports a result built from
+synthetic engineering fixtures as a real ecological or biosecurity accuracy
+figure (every such report is stamped `engineering_fixture_only`).
+
+Exit code `0` means the report is clean or in an expected-blocked state with
+no data-quality reason codes; `2` means the report was still written but one
+or more non-fatal data-quality reason codes are present (e.g. missing target
+taxon coverage, all usable records fall in a single spatial block); `1` means
+a fatal error occurred (e.g. a missing/unreadable input file, a
+`dataset_id` mismatch between bundle files, or an existing output directory
+without `--overwrite`) and nothing was written. Missing or unauthorised
+Milestone 1.5 outputs are reported as `not_run_missing_authorised_data`
+(reason `missing_authorised_s1_outputs`) rather than treated as a soft
+warning.
+
+See [`docs/data_cards/geo_experiment_readiness_v0.1.md`](docs/data_cards/geo_experiment_readiness_v0.1.md)
+for the full status/reason-code vocabulary, the grid/split formulas, and the
+authorisation rules.
+
 ## Verify
 
 ```bash
@@ -164,6 +215,10 @@ src/s3_ecological/
                   implementations of the provider Protocols
   ingestion/      offline GBIF/ALA/generic-DwC -> local snapshot importer
                   (Milestone 1.5; outside the deterministic-core boundary)
+  experiments/    offline pre-Milestone 2 readiness + spatial-split builder
+                  (prepare.py orchestration, readiness.py, spatial_split.py;
+                  outside the deterministic-core boundary; never trains a
+                  model or calibrates fusion/risk parameters)
   taxonomy/       name -> ResolvedTaxon resolution
   occurrence/     cleaning, quality flags, haversine distance
   priors/         v0.1 nearest-clean-occurrence geographic baseline
@@ -213,3 +268,13 @@ data/, models/    empty placeholders; no real data or model artifact is
   states via `acceptedScientificName`.
 - `coordinate_coarsening_decimals` is declared in `S3Settings` but not yet
   wired into any code path in this prototype.
+- `prepare-geo-experiment` only builds a spatial train/val/test split and a
+  readiness report; it does not implement S1, environmental suitability, or
+  Milestone 2's geographic model itself, and it does not calibrate fusion
+  weights or risk thresholds — those remain out of scope until S1 exists and
+  the design-log's evaluation methodology is implemented separately.
+- The `latitude_longitude_grid_v0.1` spatial-block strategy is equal-angle,
+  not equal-area, and is not a production ecological-region definition; the
+  `SpatialBlockStrategy` Protocol exists specifically so an H3, equal-area, or
+  state/ecoregion strategy can be substituted later without changing the
+  readiness-reporting or CLI code.
