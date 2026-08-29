@@ -1487,3 +1487,148 @@ reason-code vocabulary and configuration reference.
   update, were staged and committed. The repository root's own untracked
   `.gitignore` (one level above `S3-Ecological-Agent/`) was explicitly left
   untouched and unstaged, per the project owner's standing instruction.
+
+## 2026-08-29 23:58 Australia/Sydney - Readiness integrity and contract hardening
+
+### Requirement and implementation order
+
+This entry implements the complete owner-approved suggestion recorded in
+`DesignSuggestionLog.md` at `2026-08-29 20:18 Australia/Sydney`, approved at
+`2026-08-29 22:20 Australia/Sydney`. `EarlyDesign.md` was deliberately left
+unchanged and remains the stable prototype-flow reference.
+
+Work was completed in this order:
+
+1. Added pure bundle-authentication functions that locate required checksum
+   records by logical filename, compare exact input-byte SHA-256 digests, and
+   validate the documented occurrence/taxonomy/import-report identity matrix.
+2. Added a two-file commit component that stages and validates both outputs,
+   preserves recoverable backups during overwrite, verifies the committed
+   pair through Pydantic, and restores/removes both files on handled failure.
+3. Added the explicit `label_only` geographic-scope contract and the stable
+   `geographic_scope_not_enforced` reason code without introducing a regional
+   filter.
+4. Added separate deterministic quality-flag, cleaning-action, event-year,
+   and undated-usable-record summaries.
+5. Tightened configuration and public schema versions, blank/duplicate value
+   validation, and Unicode-preserving target-taxon handling.
+6. Added direct CLI exit-code/overwrite tests, fault-injection tests, integrity
+   and strict-schema tests, updated the example configuration, README, and
+   readiness data card, then completed full offline verification.
+
+### Files and components created or modified
+
+- `src/s3_ecological/experiments/bundle_integrity.py` - new pure checksum and
+  cross-file identity authentication with stable fatal error codes.
+- `src/s3_ecological/experiments/atomic_output_pair.py` - new typed staged
+  output and pair commit/rollback implementation.
+- `src/s3_ecological/experiments/record_counts.py` - new pure reporting-summary
+  helpers.
+- `src/s3_ecological/experiments/prepare.py` - authenticates inputs before
+  staging, wires the new summaries/scope semantics and input identities into
+  both outputs, and commits/verifies the manifest/report pair.
+- `src/s3_ecological/experiments/readiness.py` - adds the label-only scope
+  reason evaluator.
+- `src/s3_ecological/schemas/experiment.py` - adds strict versions and fields:
+  config `1.1.0`, manifest `1.1.0`, report `2.0.0`,
+  `geographic_scope_mode`, input-file identities, separate quality/action
+  counts, event-year counts, and `undated_usable_record_count`.
+- `src/s3_ecological/cli.py` - corrects the inventory to four subcommands.
+- `tests/unit/test_bundle_integrity.py`, `test_atomic_output_pair.py`, and
+  `test_record_counts.py` - new focused tests, including second-replacement and
+  post-commit fault injection.
+- `tests/integration/test_prepare_geo_experiment_cli.py` - new direct tests for
+  exit codes `0`, `1`, and `2`, overwrite wiring, and fatal rendering.
+- Existing experiment integration/readiness/schema tests were expanded for
+  tampering, identity mismatch, label-only scope, strict versions/values, and
+  exact output summaries.
+- `config/geo_experiment.example.toml`, `README.md`, and
+  `docs/data_cards/geo_experiment_readiness_v0.1.md` now match the final
+  contract and usage semantics.
+
+### Current behavior and usage
+
+Run the importer first to create one local Milestone 1.5 bundle, copy and edit
+`config/geo_experiment.example.toml`, then run:
+
+```powershell
+python -m s3_ecological.cli prepare-geo-experiment `
+  --config config/geo_experiment.example.toml `
+  --output-dir data/experiments/<experiment-id>
+```
+
+Use `--overwrite` only to replace an existing manifest/report pair. Exit `0`
+means clean or expected blocked readiness without data-quality reasons; exit
+`2` means the report was written with non-fatal data-quality reasons; exit
+`1` is fatal and writes no new pair (or restores the previous pair).
+
+Current fixed contract/default values are:
+
+- `geographic_scope_mode = "label_only"`; it never filters records.
+- config schema `1.1.0`, manifest schema `1.1.0`, report schema `2.0.0`.
+- `counts_by_exclusion_flag` remains for one compatible revision and is
+  exactly equal to `counts_by_cleaning_action`; new readers must use the
+  latter.
+- Existing spatial defaults remain grid size `1.0` degree, train/validation/
+  test ratios `0.60/0.20/0.20`, and seed `42`.
+
+### Mathematical-formula and parameter impact
+
+No existing ecological-support, great-circle distance, visual/geographic
+fusion, reranking, risk-state precedence, expert-review, uncertainty, or
+processing-status formula changed. No existing calibrated or provisional
+threshold changed. The implementation locations for those formulas remain
+unchanged.
+
+This increment adds only integrity and descriptive reporting equations:
+
+1. Exact-file authentication: `h_f = SHA256(B_f)`, where `B_f` is the exact
+   byte sequence of logical file `f`, and `h_f` must equal the unique digest
+   declared for `f` in `import-report.json`. SHA-256 output length is fixed at
+   256 bits (64 hexadecimal characters); there is no tunable parameter.
+2. Quality-flag count: `C_q(k) = sum_i I[k in U(Q_i)]`, over all in-scope
+   cleaned records `i`, where `Q_i` is that record's quality-flag list, `U`
+   removes repeats within one record, and `I` is an indicator (`1` true,
+   `0` false).
+3. Cleaning-action count: `C_a(k) = sum_i I[k in U(A_i)]`, over excluded
+   records only, where `A_i` is the cleaning-action list.
+4. Event-year count: `C_y(y) = sum_i I[Y_i = y]`, over usable records with a
+   valid four-digit year `Y_i`. The only fixed year-format parameter is four
+   digits; no date imputation is performed.
+5. Undated usable count: `N_u = sum_i I[Y_i is unavailable or invalid]`, over
+   usable records. These counts are descriptive and are not seasonality,
+   suitability, ecological support, or risk evidence.
+
+### Verification completed
+
+- `python -m pytest --cov=s3_ecological --cov-report=term-missing
+  --cov-fail-under=90` - `254 passed`, `2 skipped`, total coverage `93.83%`.
+  The optional `pydantic_ai` adapter tests are the two expected skips because
+  that optional dependency is not installed.
+- `ruff check .` - passed.
+- `pyright` - `0 errors`, `0 warnings`, `0 informations`.
+- `python scripts/export_json_schemas.py` - exported all 30 registered schemas;
+  generated config/manifest/report schemas were verified as `1.1.0`, `1.1.0`,
+  and `2.0.0`. The gitignored generated directory was deleted afterward, per
+  the existing repository practice.
+- Offline CLI smoke - importer exit `0`; preparation exit `2` as expected for
+  the deliberately incomplete synthetic fixture; status
+  `engineering_fixture_only`; `geographic_scope_not_enforced` present; both
+  output files created. All temporary smoke files were deleted afterward.
+
+### Limitations and maintenance guidance
+
+- This remains an offline preparation gate. It does not implement training,
+  S1/S5, live APIs, an LLM runtime dependency, suitability, calibration, or a
+  biological-performance claim.
+- `label_only` cannot establish regional membership. Any future boundary mode
+  needs a new approved version with geometry source/version, CRS, boundary
+  convention, and exclusion accounting.
+- Remove the deprecated `counts_by_exclusion_flag` only in a future explicitly
+  approved breaking schema revision.
+- Add future integrity fields to the explicit identity matrix, not to implicit
+  dictionary/list ordering, and retain fault-injection coverage when changing
+  output-commit behavior.
+- No real dataset, generated experiment output, sensitive coordinate file,
+  secret, external-agent supervision file, or new runtime dependency was
+  added.

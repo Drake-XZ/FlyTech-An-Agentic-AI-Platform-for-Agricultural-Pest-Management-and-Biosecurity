@@ -1,7 +1,7 @@
 """``s3-ecological`` command-line entry point (EarlyDesign.md section 23.1:
 "one deterministic library entry point and one fixture-backed CLI command").
 
-Three subcommands:
+Four subcommands:
 
 - ``demo --fixture <name>``: runs one of the six golden acceptance cases
   (see ``s3_ecological.fixtures.golden_loader``) end to end with no

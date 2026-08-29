@@ -3,15 +3,19 @@
 
 This module owns all file I/O: loading and validating the config, reading
 and checksumming the Milestone 1.5 bundle, and atomically writing the two
-output artifacts. All spatial-block/split math lives in
+output artifacts. Bundle authentication lives in
+:mod:`s3_ecological.experiments.bundle_integrity`, the two-file atomic
+commit/rollback lives in :mod:`s3_ecological.experiments.atomic_output_pair`,
+record-counting lives in :mod:`s3_ecological.experiments.record_counts`, all
+spatial-block/split math lives in
 :mod:`s3_ecological.experiments.spatial_split`, and all status/reason-code
-classification lives in :mod:`s3_ecological.experiments.readiness` - both
+classification lives in :mod:`s3_ecological.experiments.readiness` - all four
 are pure and file-I/O-free so they can be unit tested without a filesystem.
 
 Deliberate layout deviation from the design suggestion's illustrative
-sketch: this orchestration lives in a third module, `prepare.py`, rather
+sketch: this orchestration lives in a separate module, `prepare.py`, rather
 than being folded into `readiness.py` or `spatial_split.py` (see
-`WorkLog.md` for the recorded reason - it keeps file I/O out of both pure
+`WorkLog.md` for the recorded reason - it keeps file I/O out of the pure
 modules, matching the design suggestion's own "isolate file I/O from pure
 logic" requirement).
 """
@@ -20,14 +24,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from s3_ecological.experiments.atomic_output_pair import (
+    AtomicPairCommitError,
+    StagedOutput,
+    commit_pair_atomically,
+)
+from s3_ecological.experiments.bundle_integrity import BundleIntegrityError, authenticate_bundle
 from s3_ecological.experiments.readiness import (
     REASON_SYNTHETIC_ENGINEERING_FIXTURE_DECLARED,
     combine_reason_codes,
@@ -35,7 +43,14 @@ from s3_ecological.experiments.readiness import (
     compute_overall_status,
     evaluate_authorisation,
     evaluate_data_quality,
+    evaluate_geographic_scope,
     evaluate_s1_input,
+)
+from s3_ecological.experiments.record_counts import (
+    counts_by_cleaning_action,
+    counts_by_event_year,
+    counts_by_quality_flag,
+    undated_usable_record_count,
 )
 from s3_ecological.experiments.spatial_split import (
     LatitudeLongitudeGridV0,
@@ -67,7 +82,17 @@ _REPORT_FILENAME = "readiness-report.json"
 
 class GeoExperimentFatalError(Exception):
     """A config, schema, checksum, I/O, or bundle-consistency failure that
-    must stop the command before any artifact is written (exit code 1)."""
+    must stop the command before any artifact is written (exit code 1).
+
+    ``code`` is populated with a stable machine-readable code (e.g. one of
+    ``bundle_integrity``'s ``CODE_*`` constants) when the failure originates
+    from a component that provides one; it is ``None`` for failures that do
+    not have a dedicated code (invalid TOML, unreadable file, and so on).
+    """
+
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def prepare_geo_experiment(
@@ -85,13 +110,6 @@ def prepare_geo_experiment(
 
     manifest_path = output_path / _MANIFEST_FILENAME
     report_path = output_path / _REPORT_FILENAME
-    if not overwrite:
-        existing = [p.name for p in (manifest_path, report_path) if p.exists()]
-        if existing:
-            raise GeoExperimentFatalError(
-                "refusing to overwrite existing artifact(s) without --overwrite: "
-                + ", ".join(existing)
-            )
 
     occurrence_snapshot, occurrence_file_sha256 = _load_snapshot(
         config.occurrence_snapshot_path, OccurrenceSnapshot
@@ -103,13 +121,16 @@ def prepare_geo_experiment(
         config.import_report_path, ImportReport
     )
 
-    if (
-        import_report.dataset_id != occurrence_snapshot.dataset_id
-        or import_report.source_sha256 != occurrence_snapshot.source_sha256
-    ):
-        raise GeoExperimentFatalError(
-            "import-report.json does not share dataset_id/source_sha256 with occurrences.json"
+    try:
+        authenticate_bundle(
+            occurrence=occurrence_snapshot,
+            occurrence_file_sha256=occurrence_file_sha256,
+            taxonomy=taxonomy_snapshot,
+            taxonomy_file_sha256=taxonomy_file_sha256,
+            import_report=import_report,
         )
+    except BundleIntegrityError as exc:
+        raise GeoExperimentFatalError(str(exc), code=exc.code) from exc
 
     settings_overrides: dict[str, Any] = dict(config.settings_overrides)
     settings_overrides.update(
@@ -212,10 +233,10 @@ def prepare_geo_experiment(
             counts_by_target_taxon[genus] += 1
         counts_by_source[item.record.source] = counts_by_source.get(item.record.source, 0) + 1
 
-    counts_by_exclusion_flag: dict[str, int] = {}
-    for item in excluded:
-        for action in item.cleaning_actions:
-            counts_by_exclusion_flag[action] = counts_by_exclusion_flag.get(action, 0) + 1
+    quality_flag_counts = counts_by_quality_flag(cleaning_report.cleaned)
+    cleaning_action_counts = counts_by_cleaning_action(excluded)
+    event_year_counts = counts_by_event_year(usable)
+    undated_usable = undated_usable_record_count(usable)
 
     required_splits = [
         split
@@ -249,6 +270,7 @@ def prepare_geo_experiment(
         counts_by_split=split_result.counts_by_split,
         required_splits=required_splits,
     )
+    geographic_scope_reasons = evaluate_geographic_scope(config.geographic_scope_mode)
     occurrence_data_status = compute_occurrence_data_status(
         data_nature=config.data_nature,
         authorisation_reasons=authorisation_reasons,
@@ -258,7 +280,11 @@ def prepare_geo_experiment(
         occurrence_data_status=occurrence_data_status, s1_input_status=s1_input_status
     )
     reason_codes = combine_reason_codes(
-        data_nature_reasons, authorisation_reasons, s1_reasons, data_quality_reasons
+        data_nature_reasons,
+        authorisation_reasons,
+        s1_reasons,
+        data_quality_reasons,
+        geographic_scope_reasons,
     )
 
     warnings = _build_warnings(
@@ -306,6 +332,7 @@ def prepare_geo_experiment(
         effective_cleaning_settings=effective_cleaning_settings,
         target_taxa=list(config.target_taxa),
         geographic_scope=config.geographic_scope,
+        geographic_scope_mode=config.geographic_scope_mode,
         block_strategy=strategy.name,
         block_strategy_version=strategy.version,
         grid_size_degrees=config.spatial_split.grid_size_degrees,
@@ -319,7 +346,6 @@ def prepare_geo_experiment(
     )
     manifest_bytes = _serialize(manifest)
     manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
-    manifest_tmp = _write_temp(manifest_path, manifest_bytes)
 
     report = GeoExperimentReadinessReport(
         experiment_id=config.experiment_id,
@@ -331,6 +357,7 @@ def prepare_geo_experiment(
         authorisation=config.authorisation,
         configuration_digest=configuration_digest,
         effective_cleaning_settings=effective_cleaning_settings,
+        geographic_scope_mode=config.geographic_scope_mode,
         occurrence_snapshot=occurrence_identity,
         taxonomy_snapshot=taxonomy_identity,
         import_report=import_report_identity,
@@ -340,7 +367,11 @@ def prepare_geo_experiment(
         counts_by_source=counts_by_source,
         counts_by_block=split_result.counts_by_block,
         counts_by_split=split_result.counts_by_split,
-        counts_by_exclusion_flag=counts_by_exclusion_flag,
+        counts_by_quality_flag=quality_flag_counts,
+        counts_by_cleaning_action=cleaning_action_counts,
+        counts_by_exclusion_flag=cleaning_action_counts,
+        counts_by_event_year=event_year_counts,
+        undated_usable_record_count=undated_usable,
         earliest_usable_event_date=earliest_date,
         latest_usable_event_date=latest_date,
         missing_target_taxa=missing_target_taxa,
@@ -350,15 +381,60 @@ def prepare_geo_experiment(
     )
     report_bytes = _serialize(report)
     report_sha256 = hashlib.sha256(report_bytes).hexdigest()
-    report_tmp = _write_temp(report_path, report_bytes)
 
-    _verify_and_commit(manifest_tmp, manifest_path, manifest_sha256)
-    _verify_and_commit(report_tmp, report_path, report_sha256)
+    try:
+        commit_pair_atomically(
+            StagedOutput(final_path=manifest_path, data=manifest_bytes, sha256=manifest_sha256),
+            StagedOutput(final_path=report_path, data=report_bytes, sha256=report_sha256),
+            overwrite=overwrite,
+            verify_committed=_verify_committed_output_pair,
+        )
+    except AtomicPairCommitError as exc:
+        raise GeoExperimentFatalError(str(exc)) from exc
 
     SpatialSplitManifest.model_validate(json.loads(manifest_path.read_text(encoding="utf-8")))
     return GeoExperimentReadinessReport.model_validate(
         json.loads(report_path.read_text(encoding="utf-8"))
     )
+
+
+def _verify_committed_output_pair(manifest_bytes: bytes, report_bytes: bytes) -> None:
+    """Post-commit cross-check between the two just-written files. Raising
+    here triggers ``commit_pair_atomically``'s rollback of both files - this
+    function must never mutate either argument or touch the filesystem."""
+    try:
+        manifest = SpatialSplitManifest.model_validate_json(manifest_bytes)
+        report = GeoExperimentReadinessReport.model_validate_json(report_bytes)
+    except ValidationError as exc:
+        raise ValueError(f"post-commit schema validation failed: {exc}") from exc
+
+    mismatched_fields = [
+        label
+        for label, matches in (
+            ("experiment_id", manifest.experiment_id == report.experiment_id),
+            (
+                "configuration_digest",
+                manifest.configuration_digest == report.configuration_digest,
+            ),
+            (
+                "geographic_scope_mode",
+                manifest.geographic_scope_mode == report.geographic_scope_mode,
+            ),
+            ("occurrence_snapshot", manifest.occurrence_snapshot == report.occurrence_snapshot),
+            ("taxonomy_snapshot", manifest.taxonomy_snapshot == report.taxonomy_snapshot),
+            ("import_report", manifest.import_report == report.import_report),
+        )
+        if not matches
+    ]
+    if mismatched_fields:
+        raise ValueError(
+            "manifest/report identity mismatch after commit: " + ", ".join(mismatched_fields)
+        )
+
+    if report.spatial_split_manifest_sha256 != hashlib.sha256(manifest_bytes).hexdigest():
+        raise ValueError(
+            "report.spatial_split_manifest_sha256 does not match the committed manifest"
+        )
 
 
 def _load_config(path: Path) -> GeoExperimentConfig:
@@ -473,29 +549,3 @@ def _serialize(model: BaseModel) -> bytes:
     convention so identical inputs always produce identical bytes."""
     data = model.model_dump(mode="json")
     return (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-
-
-def _write_temp(final_path: Path, data: bytes) -> Path:
-    fd, tmp_name = tempfile.mkstemp(
-        dir=final_path.parent, prefix=f".{final_path.name}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(data)
-    except OSError:
-        Path(tmp_name).unlink(missing_ok=True)
-        raise
-    return Path(tmp_name)
-
-
-def _verify_and_commit(tmp_path: Path, final_path: Path, expected_sha256: str) -> None:
-    try:
-        readback = tmp_path.read_bytes()
-        if hashlib.sha256(readback).hexdigest() != expected_sha256:
-            raise GeoExperimentFatalError(
-                f"checksum verification failed for '{final_path.name}' after write"
-            )
-        os.replace(tmp_path, final_path)
-    except Exception:
-        tmp_path.unlink(missing_ok=True)
-        raise

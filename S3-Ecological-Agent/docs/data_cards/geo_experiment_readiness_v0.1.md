@@ -16,6 +16,10 @@ existing bundle-consistency check and cleaning logic unchanged, and
 deterministically assigns whole spatial blocks - never individual records -
 to a train/validation/test split.
 
+Public contract versions for this hardening increment are configuration
+`1.1.0`, `spatial-split-manifest.json` `1.1.0`, and
+`readiness-report.json` `2.0.0`. Unknown versions are rejected.
+
 This is **not** a real dataset, and its outputs are **not** a geographic
 model or an evaluation result. No occurrence or taxonomy data is committed
 to this repository; the only inputs matching the expected bundle shape under
@@ -37,10 +41,24 @@ version control are the small synthetic fixtures in
 
 Three files from one Milestone 1.5 `import-occurrences` run:
 `occurrences.json`, `taxonomy.json`, and `import-report.json`. All three are
-read, SHA-256 checksummed, and cross-checked (shared `dataset_id` and
-`source_sha256` across all three; every occurrence `taxon_id` present in the
-taxonomy bundle) before any cleaning or splitting happens. Missing or
-inconsistent inputs are a fatal error - no partial output is ever written.
+read as exact bytes and SHA-256 checksummed. The occurrence and taxonomy
+digests must match exactly one `import-report.json.output_files` entry found
+by logical filename, never by mapping order. The three inputs must agree on
+`dataset_id` and source SHA-256; all other identity metadata shared by two or
+more schemas must also agree. Every occurrence `taxon_id` must be present in
+the taxonomy bundle. Missing checksums, duplicate checksums, tampering, or
+identity mismatch are fatal before temporary output files are created, and
+no readiness report is written.
+
+## Geographic scope semantics
+
+`geographic_scope` is required to be a non-blank human-readable label. The
+only supported mode is `geographic_scope_mode = "label_only"`: the label does
+not define a boundary and never filters or excludes a record. Both outputs
+record the mode, and the readiness report includes
+`geographic_scope_not_enforced`, meaning region-specific readiness remains
+unverified. A future boundary-enforced mode requires a separately approved,
+versioned profile.
 
 ## Genus resolution and in-scope filtering
 
@@ -61,6 +79,20 @@ In-scope records are cleaned with the existing, unmodified
 flags and cleaning actions are carried unchanged into
 `spatial-split-manifest.json`'s `excluded_records` for any record not
 `usable_for_distance`.
+
+The readiness report keeps the following summaries distinct:
+
+- `counts_by_quality_flag` counts each distinct quality flag once per
+  in-scope record, including usable records;
+- `counts_by_cleaning_action` counts each distinct action once per excluded
+  record;
+- `counts_by_exclusion_flag` is a deprecated one-revision compatibility alias
+  whose value is exactly equal to `counts_by_cleaning_action`.
+
+It also reports `counts_by_event_year` for usable records with a valid
+four-digit year and `undated_usable_record_count` for usable records without
+one. These time summaries are descriptive coverage only; they are not
+seasonality, environmental-suitability, or ecological-support evidence.
 
 ## Spatial block strategy: `latitude_longitude_grid_v0.1`
 
@@ -135,11 +167,23 @@ outputs to this repository.
 
 Both output files use fixed indentation, `ensure_ascii=False`, and
 Pydantic's field-declaration key order, so re-running on a byte-identical
-bundle and config produces byte-identical output. Each file is written to a
-same-directory temp file, read back and checksum-verified, then committed
-with `os.replace`, mirroring the Milestone 1.5 importer's write pattern. An
-existing `spatial-split-manifest.json`/`readiness-report.json` is left
+bundle and config produces byte-identical output. Both files are serialized
+and validated before final paths are touched, staged in the destination
+directory, checksum-verified, and committed as one pair. On a replacement or
+read-back failure, a new partial pair is removed or an existing pair is
+restored byte-for-byte; handled paths leave no temporary/backup files. An
+existing `spatial-split-manifest.json`/`readiness-report.json` pair is left
 untouched unless `--overwrite` is passed.
+
+## CLI outcome contract
+
+`prepare-geo-experiment` returns `0` for a clean or expected blocked result
+without data-quality reason codes, including the honest
+`not_run_missing_authorised_data` state while authorised S1 output is absent.
+It returns `2` after writing a report with non-fatal data-quality reasons, and
+`1` for fatal configuration, input, integrity, or output-commit failures. A
+fatal failure writes no new output pair; overwrite failures restore the prior
+pair.
 
 ## Why the absence of S1 blocks full Milestone 2 evaluation
 

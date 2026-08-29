@@ -10,6 +10,7 @@ from s3_ecological.experiments.readiness import (
     REASON_AUTHORISATION_NOT_GRANTED,
     REASON_AUTHORISATION_UNKNOWN,
     REASON_EMPTY_REQUIRED_SPLIT,
+    REASON_GEOGRAPHIC_SCOPE_NOT_ENFORCED,
     REASON_MISSING_AUTHORISED_S1_OUTPUTS,
     REASON_MISSING_TARGET_TAXON_COVERAGE,
     REASON_NO_USABLE_OCCURRENCE_RECORDS,
@@ -21,12 +22,14 @@ from s3_ecological.experiments.readiness import (
     compute_overall_status,
     evaluate_authorisation,
     evaluate_data_quality,
+    evaluate_geographic_scope,
     evaluate_s1_input,
 )
 from s3_ecological.schemas.experiment import (
     AuthorisationDeclaration,
     AuthorisationStatus,
     DataNature,
+    GeographicScopeMode,
     ReadinessStatus,
     S1InputStatus,
     SplitName,
@@ -202,3 +205,9 @@ def test_combine_reason_codes_dedupes_preserving_first_seen_order():
         ["a", "b"], ["b", "c"], ["a", "d"],
     )
     assert combined == ["a", "b", "c", "d"]
+
+
+def test_evaluate_geographic_scope_label_only_is_always_reported():
+    assert evaluate_geographic_scope(GeographicScopeMode.LABEL_ONLY) == [
+        REASON_GEOGRAPHIC_SCOPE_NOT_ENFORCED
+    ]

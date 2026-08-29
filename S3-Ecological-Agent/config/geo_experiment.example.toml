@@ -13,7 +13,7 @@
 # spatial train/val/test split plus a readiness report. It never trains a
 # model, calibrates a fusion weight or risk threshold, or implements S1.
 
-schema_version = "1.0.0"
+schema_version = "1.1.0"
 experiment_id = "example-geo-experiment-2026-08-29"
 
 # Must be an RFC 3339 timestamp with a timezone offset (naive timestamps are
@@ -33,6 +33,11 @@ import_report_path = "data/snapshots/example/import-report.json"
 target_taxa = ["Anastrepha", "Bactrocera", "Ceratitis", "Rhagoletis"]
 
 geographic_scope = "global"
+
+# Profile v0.1 treats geographic_scope only as a human-readable label. It
+# does not filter or exclude records by a boundary, and the readiness report
+# therefore includes `geographic_scope_not_enforced`.
+geographic_scope_mode = "label_only"
 
 # "real_world_data" or "synthetic_engineering_fixture". Set this explicitly -
 # it is never inferred from the data itself. A synthetic-fixture run always
