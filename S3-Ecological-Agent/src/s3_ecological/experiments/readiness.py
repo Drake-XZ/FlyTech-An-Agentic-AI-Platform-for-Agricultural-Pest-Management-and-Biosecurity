@@ -16,6 +16,7 @@ from s3_ecological.schemas.experiment import (
     AuthorisationDeclaration,
     AuthorisationStatus,
     DataNature,
+    GeographicScopeMode,
     ReadinessStatus,
     S1InputStatus,
     SplitName,
@@ -30,6 +31,7 @@ REASON_SINGLE_BLOCK_ONLY = "single_block_only"
 REASON_EMPTY_REQUIRED_SPLIT = "empty_required_split"
 REASON_MISSING_AUTHORISED_S1_OUTPUTS = "missing_authorised_s1_outputs"
 REASON_S1_OUTPUTS_SUPPLIED_BUT_NOT_VALIDATED = "s1_outputs_supplied_but_not_validated_by_this_tool"
+REASON_GEOGRAPHIC_SCOPE_NOT_ENFORCED = "geographic_scope_not_enforced"
 
 
 def evaluate_authorisation(declaration: AuthorisationDeclaration) -> list[str]:
@@ -88,6 +90,19 @@ def evaluate_data_quality(
         reasons.append(REASON_EMPTY_REQUIRED_SPLIT)
 
     return reasons
+
+
+def evaluate_geographic_scope(mode: GeographicScopeMode) -> list[str]:
+    """Reason code documenting how ``geographic_scope`` was (not) enforced.
+
+    ``label_only`` - the only mode this build implements - never filters or
+    excludes a record by region, so region-specific readiness is always
+    unverified while it is active. This is reported unconditionally under
+    that mode; it is structural/informational, not a data-quality problem,
+    so callers must not fold it into a data-quality gate."""
+    if mode is GeographicScopeMode.LABEL_ONLY:
+        return [REASON_GEOGRAPHIC_SCOPE_NOT_ENFORCED]
+    return []
 
 
 def compute_occurrence_data_status(

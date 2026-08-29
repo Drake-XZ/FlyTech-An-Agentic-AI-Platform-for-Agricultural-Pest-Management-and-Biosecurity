@@ -157,19 +157,31 @@ python -m s3_ecological.cli prepare-geo-experiment \
 
 This command:
 
+- authenticates the exact `occurrences.json` and `taxonomy.json` bytes against
+  the checksum entries in `import-report.json`, then checks the three files'
+  versioned identity metadata before creating temporary outputs;
 - reuses the Milestone 1.5 bundle validation (`validate_local_snapshot_bundle`)
-  and the deterministic-core cleaning rules (`S3Settings` + `clean_occurrences`)
-  unchanged;
-- checks authorisation declarations, schema/checksum/identity consistency
-  between `occurrences.json`/`taxonomy.json`/`import-report.json`, taxonomy-ID
-  resolution, and TF4 target-genus coverage (`Anastrepha`, `Bactrocera`,
-  `Ceratitis`, `Rhagoletis`);
+  and deterministic-core cleaning rules (`S3Settings` + `clean_occurrences`)
+  unchanged, while reporting quality flags separately from cleaning actions;
+- checks authorisation declarations, taxonomy-ID resolution, and TF4
+  target-genus coverage (`Anastrepha`, `Bactrocera`, `Ceratitis`,
+  `Rhagoletis`);
+- treats `geographic_scope` as a label only under the required
+  `geographic_scope_mode = "label_only"`; it never filters by that label and
+  reports `geographic_scope_not_enforced`;
 - assigns whole spatial blocks — never individual records — to train/val/test
   using the `latitude_longitude_grid_v0.1` strategy and a seeded hash, so a
   block is never split across two splits and a re-run with unchanged inputs
   produces byte-identical output;
-- writes `spatial-split-manifest.json` and `readiness-report.json` to
-  `--output-dir` via atomic, checksum-verified writes.
+- reports descriptive counts by valid event year and the usable records that
+  have no valid year; these are not seasonality or suitability evidence;
+- writes and verifies `spatial-split-manifest.json` and
+  `readiness-report.json` as one output pair, restoring the exact prior pair
+  or removing a partial new pair if commit/read-back verification fails.
+
+The current public contract versions are config `1.1.0`, spatial-split
+manifest `1.1.0`, and readiness report `2.0.0`. Unknown versions and blank or
+duplicate identity/target-taxon values fail validation.
 
 It **never** trains a geographic model, calibrates a fusion weight or risk
 threshold, implements S1/S5 or environmental suitability, calls a live
@@ -177,16 +189,16 @@ GBIF/ALA API, or uses an LLM — and it never reports a result built from
 synthetic engineering fixtures as a real ecological or biosecurity accuracy
 figure (every such report is stamped `engineering_fixture_only`).
 
-Exit code `0` means the report is clean or in an expected-blocked state with
+Exit code `0` means the report is clean or in an expected blocked state with
 no data-quality reason codes; `2` means the report was still written but one
 or more non-fatal data-quality reason codes are present (e.g. missing target
 taxon coverage, all usable records fall in a single spatial block); `1` means
 a fatal error occurred (e.g. a missing/unreadable input file, a
 `dataset_id` mismatch between bundle files, or an existing output directory
-without `--overwrite`) and nothing was written. Missing or unauthorised
-Milestone 1.5 outputs are reported as `not_run_missing_authorised_data`
-(reason `missing_authorised_s1_outputs`) rather than treated as a soft
-warning.
+without `--overwrite`) and no new output pair was written. Missing authorised
+S1 output is represented honestly as `not_run_missing_authorised_data`
+(reason `missing_authorised_s1_outputs`) and remains a non-fatal, expected
+blocked state until S1 is available.
 
 See [`docs/data_cards/geo_experiment_readiness_v0.1.md`](docs/data_cards/geo_experiment_readiness_v0.1.md)
 for the full status/reason-code vocabulary, the grid/split formulas, and the
@@ -230,7 +242,7 @@ src/s3_ecological/
   agent/          optional offline mock LLM provider + typed tool wrappers
                   + a guarded, optional pydantic_ai adapter
   api/            documented stub only - no HTTP API in this prototype
-  cli.py          `s3-ecological` demo/assess/import-occurrences commands
+  cli.py          demo/assess/import-occurrences/prepare-geo-experiment commands
   settings.py     S3Settings (Prototype Implementation Profile v0.1 defaults)
 tests/
   unit/           schemas, cleaning, distance, fusion, risk, evidence, taxonomy

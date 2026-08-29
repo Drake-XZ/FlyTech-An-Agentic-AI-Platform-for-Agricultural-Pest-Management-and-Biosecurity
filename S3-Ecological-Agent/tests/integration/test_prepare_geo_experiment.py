@@ -14,8 +14,16 @@ from typing import TypedDict
 
 import pytest
 
+from s3_ecological.experiments.bundle_integrity import (
+    CODE_BUNDLE_METADATA_MISMATCH,
+    CODE_DUPLICATE_BUNDLE_CHECKSUM,
+    CODE_MISSING_BUNDLE_CHECKSUM,
+    CODE_OCCURRENCE_CHECKSUM_MISMATCH,
+    CODE_TAXONOMY_CHECKSUM_MISMATCH,
+)
 from s3_ecological.experiments.prepare import GeoExperimentFatalError, prepare_geo_experiment
 from s3_ecological.experiments.readiness import (
+    REASON_GEOGRAPHIC_SCOPE_NOT_ENFORCED,
     REASON_MISSING_AUTHORISED_S1_OUTPUTS,
     REASON_NO_USABLE_OCCURRENCE_RECORDS,
     REASON_SINGLE_BLOCK_ONLY,
@@ -23,6 +31,7 @@ from s3_ecological.experiments.readiness import (
 from s3_ecological.ingestion.occurrence_snapshot import import_occurrence_snapshot
 from s3_ecological.schemas.experiment import (
     GeoExperimentReadinessReport,
+    GeographicScopeMode,
     ReadinessStatus,
     S1InputStatus,
     SpatialSplitManifest,
@@ -54,6 +63,16 @@ _SINGLE_BLOCK_CSV_ROWS = [
     "10.1,20.1,50,2020-01-01,HumanObservation,CC-BY 4.0,,false,false",
     "generic:102,Ceratitis capitata,Ceratitis capitata,generic:taxon-102,species,"
     "10.2,20.2,50,2020-06-01,HumanObservation,CC-BY 4.0,,false,false",
+]
+# One usable-but-flagged record (zero coordinates - not a cleaning exclusion)
+# and one excluded record (unknown coordinate uncertainty - both a flag and
+# an action), for testing that `counts_by_quality_flag` and
+# `counts_by_cleaning_action` stay separate.
+_QUALITY_FLAG_VS_ACTION_CSV_ROWS = [
+    "generic:301,Bactrocera dorsalis,Bactrocera dorsalis,generic:taxon-301,species,"
+    "0,0,50,2020-01-01,HumanObservation,CC-BY 4.0,,false,false",
+    "generic:302,Bactrocera dorsalis,Bactrocera dorsalis,generic:taxon-302,species,"
+    "10.5,20.5,,2020-01-01,HumanObservation,CC-BY 4.0,,false,false",
 ]
 
 
@@ -97,7 +116,7 @@ def _write_config(
         else ""
     )
     content = f"""
-schema_version = "1.0.0"
+schema_version = "1.1.0"
 experiment_id = "{experiment_id}"
 generated_at = 2026-08-29T00:00:00+10:00
 occurrence_snapshot_path = "{(bundle_dir / "occurrences.json").as_posix()}"
@@ -288,12 +307,19 @@ def test_manifest_and_report_checksums_and_pydantic_validation(tmp_path):
 
 
 def test_dataset_id_mismatch_between_bundle_files_is_fatal(tmp_path):
+    # Tampers only `import-report.json`'s own `dataset_id` field (never
+    # `occurrences.json`/`taxonomy.json` content) so the occurrence/taxonomy
+    # file checksums recorded in the report still match their actual bytes -
+    # this isolates the identity-matrix `dataset_id` mismatch from the
+    # checksum-authentication check added in this increment, which would
+    # otherwise fire first (and with a different error code) for any edit to
+    # the checksummed files themselves.
     bundle_dir = tmp_path / "bundle"
     _import_bundle(bundle_dir)
-    occurrences_path = bundle_dir / "occurrences.json"
-    payload = json.loads(occurrences_path.read_text(encoding="utf-8"))
+    report_path = bundle_dir / "import-report.json"
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
     payload["dataset_id"] = "a-different-dataset-id"
-    occurrences_path.write_text(json.dumps(payload), encoding="utf-8")
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
 
     config_path = _write_config(tmp_path / "config.toml", bundle_dir=bundle_dir)
 
@@ -325,3 +351,168 @@ def test_effective_cleaning_settings_and_configuration_digest_are_recorded_in_bo
     assert report.configuration_digest == manifest.configuration_digest
     assert report.effective_cleaning_settings == manifest.effective_cleaning_settings
     assert report.effective_cleaning_settings["occurrence_provider"] == "local_snapshot"
+
+
+def _assert_output_dir_has_no_files(output_dir: Path) -> None:
+    """A bundle-authentication failure must precede any output/temp file
+    (the output directory itself may already exist - `prepare_geo_experiment`
+    creates it before loading the bundle - but it must be empty)."""
+    assert not output_dir.exists() or not any(output_dir.iterdir())
+
+
+def test_occurrence_checksum_mismatch_is_fatal_with_no_output_written(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    _import_bundle(bundle_dir)
+    occurrences_path = bundle_dir / "occurrences.json"
+    payload = json.loads(occurrences_path.read_text(encoding="utf-8"))
+    payload["citation"] = payload["citation"] + " (tampered)"
+    occurrences_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    config_path = _write_config(tmp_path / "config.toml", bundle_dir=bundle_dir)
+    output_dir = tmp_path / "out"
+
+    with pytest.raises(GeoExperimentFatalError, match="does not match the checksum") as exc_info:
+        prepare_geo_experiment(config_path=config_path, output_dir=output_dir)
+    assert exc_info.value.code == CODE_OCCURRENCE_CHECKSUM_MISMATCH
+    _assert_output_dir_has_no_files(output_dir)
+
+
+def test_taxonomy_checksum_mismatch_is_fatal_with_no_output_written(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    _import_bundle(bundle_dir)
+    taxonomy_path = bundle_dir / "taxonomy.json"
+    payload = json.loads(taxonomy_path.read_text(encoding="utf-8"))
+    payload["mapping_version"] = payload["mapping_version"] + "-tampered"
+    taxonomy_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    config_path = _write_config(tmp_path / "config.toml", bundle_dir=bundle_dir)
+    output_dir = tmp_path / "out"
+
+    with pytest.raises(GeoExperimentFatalError, match="does not match the checksum") as exc_info:
+        prepare_geo_experiment(config_path=config_path, output_dir=output_dir)
+    assert exc_info.value.code == CODE_TAXONOMY_CHECKSUM_MISMATCH
+    _assert_output_dir_has_no_files(output_dir)
+
+
+def test_missing_bundle_checksum_entry_is_fatal_with_no_output_written(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    _import_bundle(bundle_dir)
+    report_path = bundle_dir / "import-report.json"
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    del payload["output_files"]["occurrences"]
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    config_path = _write_config(tmp_path / "config.toml", bundle_dir=bundle_dir)
+    output_dir = tmp_path / "out"
+
+    with pytest.raises(GeoExperimentFatalError, match="no output_files entry") as exc_info:
+        prepare_geo_experiment(config_path=config_path, output_dir=output_dir)
+    assert exc_info.value.code == CODE_MISSING_BUNDLE_CHECKSUM
+    _assert_output_dir_has_no_files(output_dir)
+
+
+def test_duplicate_bundle_checksum_entry_is_fatal_with_no_output_written(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    _import_bundle(bundle_dir)
+    report_path = bundle_dir / "import-report.json"
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["output_files"]["occurrences_duplicate"] = dict(payload["output_files"]["occurrences"])
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    config_path = _write_config(tmp_path / "config.toml", bundle_dir=bundle_dir)
+    output_dir = tmp_path / "out"
+
+    with pytest.raises(GeoExperimentFatalError, match="expected exactly one") as exc_info:
+        prepare_geo_experiment(config_path=config_path, output_dir=output_dir)
+    assert exc_info.value.code == CODE_DUPLICATE_BUNDLE_CHECKSUM
+    _assert_output_dir_has_no_files(output_dir)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "source_sha256",
+        "source",
+        "retrieved_at",
+        "dataset_license",
+        "citation",
+        "occurrence_mapping_version",
+        "taxonomy_mapping_version",
+    ],
+)
+def test_identity_matrix_field_mismatch_is_fatal(tmp_path, field_name):
+    # As with `test_dataset_id_mismatch_between_bundle_files_is_fatal`, only
+    # `import-report.json`'s own field is tampered, never the checksummed
+    # `occurrences.json`/`taxonomy.json` content, so this exercises the
+    # identity-matrix check specifically rather than the checksum check that
+    # would otherwise fire first for any edit to a checksummed file.
+    bundle_dir = tmp_path / "bundle"
+    _import_bundle(bundle_dir)
+    report_path = bundle_dir / "import-report.json"
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload[field_name] = str(payload[field_name]) + "-tampered"
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    config_path = _write_config(tmp_path / "config.toml", bundle_dir=bundle_dir)
+    output_dir = tmp_path / "out"
+
+    with pytest.raises(GeoExperimentFatalError, match=field_name) as exc_info:
+        prepare_geo_experiment(config_path=config_path, output_dir=output_dir)
+    assert exc_info.value.code == CODE_BUNDLE_METADATA_MISMATCH
+    _assert_output_dir_has_no_files(output_dir)
+
+
+def test_counts_by_quality_flag_and_cleaning_action_are_kept_separate(tmp_path):
+    csv_path = tmp_path / "quality_vs_action.csv"
+    csv_path.write_text(
+        "\n".join([_SINGLE_BLOCK_CSV_HEADER, *_QUALITY_FLAG_VS_ACTION_CSV_ROWS]) + "\n",
+        encoding="utf-8",
+    )
+    bundle_dir = tmp_path / "bundle"
+    _import_bundle(bundle_dir, input_path=csv_path, source="generic_dwc")
+
+    config_path = _write_config(
+        tmp_path / "config.toml", bundle_dir=bundle_dir, target_taxa=["Bactrocera"]
+    )
+
+    report = prepare_geo_experiment(config_path=config_path, output_dir=tmp_path / "out")
+
+    assert report.usable_record_count == 1
+    assert report.excluded_record_count == 1
+    # "zero_coordinates" is flag-only (the record stays usable) - it must
+    # never appear in counts_by_cleaning_action.
+    assert report.counts_by_quality_flag == {
+        "unknown_coordinate_uncertainty": 1,
+        "zero_coordinates": 1,
+    }
+    assert report.counts_by_cleaning_action == {"excluded_unknown_coordinate_uncertainty": 1}
+    assert report.counts_by_exclusion_flag == report.counts_by_cleaning_action
+
+
+def test_geographic_scope_mode_label_only_never_filters_records(tmp_path):
+    bundle_dir = tmp_path / "bundle"
+    _import_bundle(bundle_dir)
+    config_global = _write_config(tmp_path / "config_global.toml", bundle_dir=bundle_dir)
+    config_other_path = tmp_path / "config_other.toml"
+    config_other_path.write_text(
+        config_global.read_text(encoding="utf-8").replace(
+            'geographic_scope = "global"',
+            'geographic_scope = "a-region-this-build-cannot-verify"',
+        ),
+        encoding="utf-8",
+    )
+
+    report_global = prepare_geo_experiment(
+        config_path=config_global, output_dir=tmp_path / "out_global"
+    )
+    report_other = prepare_geo_experiment(
+        config_path=config_other_path, output_dir=tmp_path / "out_other"
+    )
+
+    assert report_global.geographic_scope_mode is GeographicScopeMode.LABEL_ONLY
+    assert REASON_GEOGRAPHIC_SCOPE_NOT_ENFORCED in report_global.reason_codes
+    assert REASON_GEOGRAPHIC_SCOPE_NOT_ENFORCED in report_other.reason_codes
+    # A different (unverifiable) geographic_scope label must not change which
+    # records are usable - label_only never filters by region.
+    assert report_global.usable_record_count == report_other.usable_record_count
+    assert report_global.usable_record_count > 0

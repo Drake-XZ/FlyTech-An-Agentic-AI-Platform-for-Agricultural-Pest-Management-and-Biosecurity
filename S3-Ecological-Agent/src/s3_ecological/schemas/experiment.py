@@ -17,13 +17,13 @@ from __future__ import annotations
 import math
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-EXPERIMENT_CONFIG_SCHEMA_VERSION = "1.0.0"
-SPATIAL_SPLIT_MANIFEST_SCHEMA_VERSION = "1.0.0"
-READINESS_REPORT_SCHEMA_VERSION = "1.0.0"
+EXPERIMENT_CONFIG_SCHEMA_VERSION = "1.1.0"
+SPATIAL_SPLIT_MANIFEST_SCHEMA_VERSION = "1.1.0"
+READINESS_REPORT_SCHEMA_VERSION = "2.0.0"
 
 # The four TF4 genera (Shen et al.; WEEK 4/FlyTech_S3_Resource_Map.md section
 # 3.5). A configurable subset is accepted for engineering tests, but the
@@ -59,6 +59,21 @@ class SplitName(StrEnum):
     TRAIN = "train"
     VALIDATION = "validation"
     TEST = "test"
+
+
+class GeographicScopeMode(StrEnum):
+    """How ``geographic_scope`` is enforced (DesignSuggestionLog.md, "2026-
+    08-29 20:18 Australia/Sydney" - "Explicit geographic_scope"). Adding a
+    future filtering mode is a new member here plus new evaluator logic in
+    ``experiments/readiness.py`` - never a change to existing call sites.
+
+    ``LABEL_ONLY`` is the only mode this build implements: ``geographic_scope``
+    is a free-text label only and is never used to filter or exclude any
+    record. Region-specific readiness is therefore always unverified while
+    this is the active mode.
+    """
+
+    LABEL_ONLY = "label_only"
 
 
 class ReadinessStatus(StrEnum):
@@ -167,7 +182,7 @@ class GeoExperimentConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = EXPERIMENT_CONFIG_SCHEMA_VERSION
+    schema_version: Literal["1.1.0"] = EXPERIMENT_CONFIG_SCHEMA_VERSION
     experiment_id: str = Field(min_length=1)
     generated_at: datetime
 
@@ -177,6 +192,7 @@ class GeoExperimentConfig(BaseModel):
 
     target_taxa: list[str] = Field(default_factory=lambda: list(DEFAULT_TARGET_TAXA), min_length=1)
     geographic_scope: str = "global"
+    geographic_scope_mode: GeographicScopeMode = GeographicScopeMode.LABEL_ONLY
     data_nature: DataNature = DataNature.REAL_WORLD_DATA
     s1_evaluation_input_path: str | None = None
 
@@ -193,6 +209,29 @@ class GeoExperimentConfig(BaseModel):
     def _require_timezone_aware_generated_at(self) -> GeoExperimentConfig:
         if self.generated_at.tzinfo is None:
             raise ValueError("generated_at must include a timezone offset (RFC 3339)")
+        return self
+
+    @model_validator(mode="after")
+    def _trim_and_validate_identity_and_target_taxa(self) -> GeoExperimentConfig:
+        experiment_id = self.experiment_id.strip()
+        if not experiment_id:
+            raise ValueError("experiment_id must not be blank")
+        self.experiment_id = experiment_id
+
+        geographic_scope = self.geographic_scope.strip()
+        if not geographic_scope:
+            raise ValueError("geographic_scope must not be blank")
+        self.geographic_scope = geographic_scope
+
+        # Only surrounding whitespace is stripped - scientific-name spelling
+        # and case (including non-ASCII characters) are never altered, so
+        # this must not reuse the importer's NFKC+casefold normalisation.
+        trimmed_taxa = [name.strip() for name in self.target_taxa]
+        if any(not name for name in trimmed_taxa):
+            raise ValueError("target_taxa entries must not be blank")
+        if len(set(trimmed_taxa)) != len(trimmed_taxa):
+            raise ValueError("target_taxa must not contain duplicate entries")
+        self.target_taxa = trimmed_taxa
         return self
 
 
@@ -266,7 +305,7 @@ class SpatialSplitManifest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = SPATIAL_SPLIT_MANIFEST_SCHEMA_VERSION
+    schema_version: Literal["1.1.0"] = SPATIAL_SPLIT_MANIFEST_SCHEMA_VERSION
     experiment_id: str
     created_at: datetime
 
@@ -279,6 +318,7 @@ class SpatialSplitManifest(BaseModel):
 
     target_taxa: list[str]
     geographic_scope: str
+    geographic_scope_mode: GeographicScopeMode
 
     block_strategy: str
     block_strategy_version: str
@@ -300,7 +340,7 @@ class GeoExperimentReadinessReport(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = READINESS_REPORT_SCHEMA_VERSION
+    schema_version: Literal["2.0.0"] = READINESS_REPORT_SCHEMA_VERSION
     experiment_id: str
     generated_at: datetime
 
@@ -312,6 +352,7 @@ class GeoExperimentReadinessReport(BaseModel):
     authorisation: AuthorisationDeclaration
     configuration_digest: str
     effective_cleaning_settings: dict[str, Any]
+    geographic_scope_mode: GeographicScopeMode
 
     occurrence_snapshot: OccurrenceSnapshotIdentity
     taxonomy_snapshot: TaxonomySnapshotIdentity
@@ -324,7 +365,20 @@ class GeoExperimentReadinessReport(BaseModel):
     counts_by_source: dict[str, int]
     counts_by_block: dict[str, int]
     counts_by_split: dict[str, int]
-    counts_by_exclusion_flag: dict[str, int]
+    counts_by_quality_flag: dict[str, int]
+    counts_by_cleaning_action: dict[str, int]
+    counts_by_exclusion_flag: dict[str, int] = Field(
+        description=(
+            "Deprecated alias for counts_by_cleaning_action, kept for one "
+            "revision for backward compatibility. Prior to this schema "
+            "version this field was silently populated from cleaning "
+            "actions despite its name; it now always equals "
+            "counts_by_cleaning_action exactly. New readers should use "
+            "counts_by_cleaning_action directly."
+        )
+    )
+    counts_by_event_year: dict[str, int]
+    undated_usable_record_count: int = Field(ge=0)
 
     earliest_usable_event_date: str | None
     latest_usable_event_date: str | None
