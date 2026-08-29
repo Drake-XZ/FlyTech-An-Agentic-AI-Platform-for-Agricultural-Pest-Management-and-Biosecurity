@@ -351,3 +351,279 @@ After completion, proceed to Milestone 2 only if authorised occurrence data and 
 - Historical entries that mention `Work.md` remain unchanged and refer to the same file before its rename.
 - Updated current documentation references to use `WorkLog.md`; all future implementation records must be appended there.
 - This rename does not modify any S3 functional requirement, code, schema, formula, threshold, test, provider, or acceptance criterion.
+
+### 2026-08-29 17:16 Australia/Sydney - Suggested next increment: offline pre-Milestone 2 data-readiness and spatial-split builder
+
+**Status:** Owner-requested design suggestion; not yet implemented. This entry does not amend the normative requirements in `EarlyDesign.md` and does not authorise learned-model training, threshold calibration, or biological-performance claims.
+
+#### Decision boundary
+
+The next proposed engineering increment is a **pre-Milestone 2 readiness tool**, not Milestone 2 model training. It prepares an authorised local occurrence bundle for a later geographic-prior experiment and reports exactly why the experiment is ready or blocked.
+
+This increment is deliberately allowed to run without S1 or any other FlyTech agent. It must preserve the existing rule that full Milestone 2 evaluation cannot proceed until both authorised occurrence data and compatible S1 outputs are available. When S1 outputs are absent, the tool may complete data preparation but must set `overall_milestone_2_status = "not_run_missing_authorised_data"` and include the more specific reason code `missing_authorised_s1_outputs`.
+
+Do not implement an environmental-suitability model, live GBIF/ALA provider, external API call, LLM workflow, S1 model, S5 workflow, learned geographic prior, fusion-weight calibration, risk-threshold calibration, or incursion classifier in this increment.
+
+#### Objective
+
+Implement one deterministic offline command that:
+
+1. validates an existing Milestone 1.5 occurrence/taxonomy snapshot bundle;
+2. records the project owner's data-authorisation declaration without inferring authorisation from public availability;
+3. applies the existing occurrence-cleaning rules;
+4. summarizes usable data for the four genus-level TF4 targets;
+5. assigns usable records to non-overlapping spatial blocks and deterministic train, validation, and test splits;
+6. writes versioned, machine-readable split and readiness artifacts; and
+7. reports missing authorised data, missing scope decisions, or missing S1 outputs without inventing substitutes.
+
+The target genera remain `Anastrepha`, `Bactrocera`, `Ceratitis`, and `Rhagoletis`. Supporting a configurable subset is acceptable for engineering tests, but the report must state which target genera are absent.
+
+#### Required local inputs
+
+The command must accept a TOML configuration and local paths only:
+
+- the existing `occurrences.json` snapshot;
+- the matching `taxonomy.json` snapshot;
+- the matching `import-report.json`;
+- a declared target-taxon list, defaulting to the four TF4 genera;
+- a declared geographic scope such as `australia`, `global`, or an owner-defined region identifier;
+- a data-authorisation status;
+- spatial-block and split settings;
+- an explicit RFC 3339 `generated_at` timestamp used for both artifact time fields so identical inputs can be reproduced; and
+- an optional path reserved for future S1 evaluation inputs.
+
+Load all cleaning-related configuration through the existing `S3Settings` model. Record the effective cleaning settings and a canonical configuration digest in both output artifacts; do not duplicate or silently override Profile v0.1 cleaning thresholds in the experiment package.
+
+Use these authorisation values:
+
+- `authorised`: the project owner or an authorised supervisor has approved this dataset for the stated prototype experiment;
+- `not_authorised`: use is explicitly disallowed;
+- `unknown`: approval has not been confirmed.
+
+An `authorised` declaration must include a non-empty `authorisation_reference`, the declared purpose, and the approving role or source. The software records this declaration but does not certify its legal correctness. A public licence alone must never be silently converted to project authorisation.
+
+For every input file, retain its path-independent SHA-256 digest, schema version, dataset ID, snapshot key, source digest, licence, citation, retrieval time, and mapping version where available. Reuse `validate_local_snapshot_bundle(settings)`; do not create a competing snapshot-consistency implementation.
+
+#### Proposed command
+
+Expose the workflow through a command shaped as follows:
+
+```text
+python -m s3_ecological.cli prepare-geo-experiment \
+  --config config/geo_experiment.example.toml \
+  --output-dir data/experiments/<experiment-id>
+```
+
+The command must perform no network access and require no API key, external agent, LLM, image model, or remote service. Exit codes must be:
+
+- `0`: artifacts were written and all engineering validations completed, including a valid blocked status;
+- `1`: fatal configuration, schema, checksum, I/O, or bundle-consistency failure prevented trustworthy artifacts;
+- `2`: artifacts were written, but one or more non-fatal data-quality readiness checks failed.
+
+A blocked status such as missing S1 outputs is an expected result and is not by itself a process crash.
+
+#### Processing sequence
+
+The implementation must perform these steps in this order:
+
+1. parse and validate configuration with Pydantic;
+2. load the three local bundle files and verify their checksums and shared identity;
+3. verify the authorisation declaration and requested study scope;
+4. resolve the target genera through the local taxonomy snapshot;
+5. reuse the existing occurrence cleaner as the sole authority for ecological usability and duplicate flags;
+6. exclude unusable records from split assignment while counting and explaining every exclusion;
+7. assign each usable record to one spatial block;
+8. assign whole blocks, never individual rows, to train, validation, or test;
+9. calculate per-taxon, per-source, per-time-range, per-quality-flag, per-block, and per-split summaries;
+10. evaluate the readiness rules without training or scoring a model;
+11. write all artifacts atomically; and
+12. read the artifacts back through their Pydantic schemas before returning success.
+
+Do not mutate, rewrite, append to, or coarsen the original snapshot files. Any future privacy transformation must create a separately identified derived artifact.
+
+#### Spatial split Profile v0.1
+
+Provide a replaceable `SpatialBlockStrategy` interface. The first implementation is `latitude_longitude_grid_v0.1`, a transparent engineering baseline.
+
+For a configured grid size `b` in decimal degrees, first canonicalize the antimeridian and poles, then calculate:
+
+```text
+longitude_for_index = -180
+  if longitude == 180 or latitude == -90 or latitude == 90
+  else longitude
+latitude_cell_count = ceil(180 / b)
+latitude_index      = min(latitude_cell_count - 1, floor((latitude + 90) / b))
+longitude_index     = floor((longitude_for_index + 180) / b)
+block_id            = "grid-v0.1:<b>:<latitude_index>:<longitude_index>"
+```
+
+Requirements:
+
+- `b` must be finite and in `(0, 10]`;
+- the example configuration may use `b = 1.0` as an explicitly uncalibrated engineering default;
+- all records with the same `block_id` must remain in the same split;
+- the same block must never occur in more than one split;
+- changing the block method, block size, split ratios, or seed creates a different split identity;
+- the report must warn that equal-angle cells have unequal physical area and are not a production ecological-region definition.
+
+Assign blocks deterministically. Compute SHA-256 over UTF-8 text `"<seed>:<block_id>"`, interpret the first eight digest bytes as an unsigned integer, and divide by `2^64` to obtain `u` in `[0,1)`. Under the default engineering ratios:
+
+```text
+train_ratio      = 0.60
+validation_ratio = 0.20
+test_ratio       = 0.20
+seed             = 42
+```
+
+assign the block to train when `u < 0.60`, validation when `0.60 <= u < 0.80`, and test otherwise. Ratios must be configurable, finite, non-negative, and sum to exactly `1.0` within a documented tolerance of `1e-9`.
+
+These numeric values are reproducibility defaults, not scientifically validated choices. Do not move individual records between splits to improve class balance. Instead, report missing or sparse taxa in each split so a later approved experiment can choose a different versioned block profile.
+
+#### Required output artifacts
+
+Write exactly these primary artifacts:
+
+1. `spatial-split-manifest.json`;
+2. `readiness-report.json`.
+
+The split manifest must contain at least:
+
+- `schema_version`;
+- `experiment_id`;
+- `created_at`;
+- all input digests and snapshot identities;
+- canonical configuration digest and effective cleaning settings;
+- target taxa and geographic scope;
+- block strategy name and version;
+- block size, split ratios, seed, and split identity;
+- one row per usable occurrence containing `source`, `source_record_id`, `taxon_id`, `block_id`, and `split`;
+- excluded-record identifiers with existing cleaning flags or exclusion reasons; and
+- deterministic ordering by split, block ID, taxon ID, source, and source record ID.
+
+Do not copy full coordinates into the manifest unless a later approved requirement needs them. The original versioned snapshot remains the coordinate source.
+
+The readiness report must contain at least:
+
+- `schema_version`;
+- `experiment_id`;
+- `generated_at`;
+- `occurrence_data_status`;
+- `s1_input_status`;
+- `overall_milestone_2_status`;
+- stable machine-readable reason codes;
+- authorisation declaration and reference;
+- snapshot, taxonomy, licence, citation, and checksum summary;
+- usable and excluded record counts;
+- counts by target taxon, source, block, and split;
+- earliest and latest usable event dates when present;
+- missing target taxa;
+- empty-split and single-block warnings;
+- a statement that no model was trained and no biological performance was measured; and
+- the path and SHA-256 digest of the split manifest. The readiness report must not embed its own digest; the CLI may print that digest after the final file is written.
+
+Use these minimum status semantics:
+
+- `ready_for_geo_prior_engineering`: occurrence data is authorised and structurally ready for an approved geo-only engineering experiment;
+- `not_run_missing_authorised_data`: the required overall status whenever authorised occurrence data, compatible authorised S1 outputs, or authorised evaluation labels are missing; stable reason codes must identify the specific missing dependency;
+- `not_ready_data_quality`: artifacts were produced but validation found empty required splits, unresolved target taxonomy, sparse or missing target coverage, or another non-fatal declared readiness failure;
+- `engineering_fixture_only`: synthetic fixtures exercised the workflow and must not be presented as research readiness.
+- `ready_for_approved_milestone_2_experiment`: all required authorised inputs are structurally present, while still making no scientific-performance claim.
+
+`occurrence_data_status` may be `ready_for_geo_prior_engineering` while `overall_milestone_2_status` remains `not_run_missing_authorised_data`. `s1_input_status` must independently distinguish `available_authorised`, `missing`, `unvalidated`, and `engineering_fixture_only`.
+
+If more than one condition applies, preserve all reason codes. The overall status must use the safest applicable result; it must never report `ready_for_approved_milestone_2_experiment` while S1 outputs or authorised evaluation labels are absent.
+
+#### S1 boundary
+
+Do not implement S1. The optional S1 path is only a future-facing validation boundary. When no path is supplied:
+
+- set `s1_input_status = "missing"`;
+- include reason `missing_authorised_s1_outputs`; and
+- set `overall_milestone_2_status = "not_run_missing_authorised_data"`.
+
+A future S1 bundle must contain versioned `ObservationRequest`-compatible candidate lists plus a separate authorised ground-truth label manifest keyed by `observation_id`. Candidate probabilities without confirmed labels may test interface plumbing but cannot support accuracy, calibration, or reranking-effect claims.
+
+Synthetic S1 candidates may be used only in automated tests. Their reports must use `engineering_fixture_only`.
+
+#### Code structure and extension requirements
+
+Keep this preprocessing workflow outside the deterministic ecological core. A suggested layout is:
+
+```text
+src/s3_ecological/
+  experiments/
+    readiness.py
+    spatial_split.py
+  schemas/
+    experiment.py
+config/
+  geo_experiment.example.toml
+docs/data_cards/
+  geo_experiment_readiness_v0.1.md
+```
+
+Requirements:
+
+- expose narrow Protocols for the spatial blocker and future split strategies;
+- use typed Pydantic input/output models with `extra="forbid"`;
+- add public models to JSON Schema export;
+- isolate file I/O from pure validation and split-assignment functions;
+- use deterministic serialization and atomic replacement;
+- require an explicit overwrite option before replacing artifacts;
+- keep functions small, names explicit, and comments focused on rationale;
+- do not introduce dependencies on PydanticAI, FastAPI, an LLM SDK, or a live data client;
+- do not modify `GeoPriorModel`, existing fusion formulas, risk-state precedence, Profile v0.1 thresholds, provider semantics, or assessment output contracts.
+
+The spatial-block interface must allow a later H3, equal-area, state, ecoregion, or supervisor-approved grouping strategy without rewriting readiness reporting.
+
+#### Tests
+
+All tests must run offline. Add unit tests for:
+
+- configuration validation and ratio tolerance;
+- every authorisation state;
+- bundle mismatch and checksum failure;
+- target-taxon coverage;
+- reuse of existing cleaning outcomes;
+- the exact block-index formula at coordinate boundaries;
+- deterministic hash assignment;
+- no block shared across splits;
+- deterministic ordering and byte-identical repeated outputs when the explicit generation timestamp is unchanged;
+- empty, single-block, sparse-taxon, missing-date, and missing-S1 cases;
+- stable reason codes and safest-status precedence;
+- atomic writes and overwrite refusal; and
+- Pydantic validation of both output artifacts.
+
+Add one integration test that imports a synthetic local GBIF/ALA-compatible fixture through the existing Milestone 1.5 importer, builds the readiness artifacts, proves there is no network call, proves all records from one block stay in one split, and receives `engineering_fixture_only` rather than a research-performance claim.
+
+Existing tests must retain their meaning and pass.
+
+#### Documentation and work record
+
+Update README with the offline command, input files, output meanings, exit codes, and a clear distinction between engineering readiness and scientific validation. Add a data card explaining spatial bias, presence-only limitations, unequal grid-cell area, authorisation declarations, privacy considerations, and why absence of S1 blocks full Milestone 2 evaluation.
+
+After implementation, append a timestamped entry to `WorkLog.md` describing implementation order, files, algorithms, exact defaults, actual commands and results, limitations, maintenance guidance, and confirmation that no external API, LLM, S1 agent, trained geographic model, calibration, or biological-performance claim was used.
+
+#### Definition of done for this suggested increment
+
+- [ ] One offline command validates a local snapshot bundle and writes both versioned artifacts.
+- [ ] Data authorisation is explicit and never inferred.
+- [ ] The four TF4 genera are summarized and missing coverage is visible.
+- [ ] Existing cleaning logic remains authoritative.
+- [ ] Spatial blocks are deterministic and never cross splits.
+- [ ] Split parameters and identities are fully recorded.
+- [ ] Missing S1 produces overall status `not_run_missing_authorised_data` with reason `missing_authorised_s1_outputs`.
+- [ ] Synthetic tests produce `engineering_fixture_only`.
+- [ ] No model is trained and no threshold is calibrated.
+- [ ] No network, external agent, API key, or LLM is required.
+- [ ] Existing scoring, fusion, risk, provider, and response behavior is unchanged.
+- [ ] All new schemas are exported and documented.
+- [ ] Tests, Ruff, Pyright, schema export, and CLI smoke tests pass.
+- [ ] README, data card, and `WorkLog.md` are updated.
+- [ ] No real dataset, generated experiment bundle, or sensitive coordinate file is committed.
+
+#### Consistency with existing design
+
+This suggestion is compatible with the existing delivery sequence because it is a preparation gate before Milestone 2, not a replacement for Milestone 2. It preserves the requirement to reproduce or adapt `geo_prior`, train a fruit-fly prior, fuse it with S1, and evaluate spatial holdouts only after the required authorised inputs are available.
+
+It also preserves the earlier rule to record `not_run_missing_authorised_data` rather than fabricate results. The more specific `missing_authorised_s1_outputs` reason code identifies which dependency is absent without changing the required overall status or claiming Milestone 2 completion. If this suggestion is approved as a normative implementation requirement, copy its current requirements into the appropriate sections of `EarlyDesign.md`, update that document's `Last updated` date, and append a separate approval entry here before implementation begins.
