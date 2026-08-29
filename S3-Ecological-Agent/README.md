@@ -150,7 +150,7 @@ pyright
 python scripts/export_json_schemas.py
 ```
 
-See `Work.md` for the actual commands run against this codebase and their
+See `WorkLog.md` for the actual commands run against this codebase and their
 results.
 
 ## Layout

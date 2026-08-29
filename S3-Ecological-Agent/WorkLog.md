@@ -1167,3 +1167,40 @@ are not part of this commit.
   created or modified" above, plus this Work.md entry, were staged and
   committed — the user's own pre-existing untracked `LECTURE/`, `WEEK 4/`,
   `WEEK 5/`, and `.gitignore` were left untouched and unstaged.
+
+---
+
+## 2026-08-29 16:49 Australia/Sydney
+
+### Scope
+
+Renamed the implementation history file from `Work.md` to `WorkLog.md` at the
+project owner's request. This is a documentation-organization change only.
+
+### Changes made
+
+- Renamed `Work.md` to `WorkLog.md` without changing or reordering any existing
+  historical entry.
+- Kept the existing append-only policy, timestamp requirements, record format,
+  maintenance rules, and permitted non-semantic correction policy unchanged.
+- Updated the active README reference and the current maintenance-policy
+  reference in `DesignSuggestionLog.md` to use `WorkLog.md`.
+- Preserved historical occurrences of the former filename `Work.md`; they refer
+  to this same log before its rename and remain part of the immutable history.
+- Added a corresponding rename record to the end of `DesignSuggestionLog.md`.
+
+### Functional and compatibility impact
+
+- S3 source code, configuration, schemas, formulas, thresholds, tests, fixtures,
+  CLI behavior, and provider behavior are unchanged.
+- Future implementation records must be appended to `WorkLog.md` using the same
+  requirements that previously applied to `Work.md`.
+
+### Validation
+
+- Verified that all content from the former `Work.md` is preserved before this
+  newly appended entry.
+- Verified repository references so current guidance uses the new filename while
+  historical log wording remains unchanged.
+- No test suite was run because this change only renames and cross-references a
+  Markdown documentation file.
