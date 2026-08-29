@@ -635,3 +635,123 @@ It also preserves the earlier rule to record `not_run_missing_authorised_data` r
 **Action taken:** Per that entry's closing instruction, its requirements have been copied into `EarlyDesign.md` (section 11.4 "Data splits" and the Milestone 2 entry in section 22 "Delivery Sequence for the Builder Agent"), and the "Last updated" date at the top of `EarlyDesign.md` has been advanced to 29 August 2026. No existing record in this log or in `EarlyDesign.md` was modified, deleted, or reordered, and no new Change Log section was added to `EarlyDesign.md`.
 
 **Scope confirmation:** This approval authorises only the pre-Milestone 2 readiness/spatial-split tool described in the 17:16 entry (the `prepare-geo-experiment` CLI command, `spatial-split-manifest.json`, `readiness-report.json`, and the `latitude_longitude_grid_v0.1` block/split profile). It does not authorise training a geographic model, calibrating fusion weights or risk thresholds, implementing S1/S5, an environmental suitability model, live GBIF/ALA API access, or an LLM, and it does not change any existing scoring, fusion, risk-state precedence, or Profile v0.1 threshold. Implementation, tests, and documentation follow in this same change.
+
+### 2026-08-29 20:18 Australia/Sydney - Suggested hardening increment: readiness integrity and contract corrections
+
+**Status:** Review suggestion for implementation at commit `ea0a5e2`. It is not approved or implemented. Record approval in a later append-only entry before changing code.
+
+#### Review outcome
+
+The offline pre-Milestone 2 builder substantially follows the approved design. Independent checks completed with 193 tests passed, 2 skipped, 90% coverage, Ruff passing, and Pyright reporting no errors or warnings. It builds deterministic local blocks/splits and typed artifacts without training, S1, an API, an LLM, or network access.
+
+The corrections below are recommended before this becomes the stable Milestone 2 input contract or is merged into `main`. They must not change `GeoPriorModel`, fusion formulas, risk precedence, Profile v0.1 thresholds, providers, or assessment responses.
+
+#### 1. Authenticate the imported bundle
+
+Input SHA-256 values are calculated but occurrence and taxonomy digests are not compared with `import-report.json.output_files`. A schema-valid file can therefore be modified after import while retaining declared identity.
+
+Required behavior:
+
+- Find expected occurrence and taxonomy entries by documented logical filename, never list order.
+- Require exactly one checksum entry per required file; missing or duplicate entries are fatal.
+- Hash exact input bytes and compare before generating outputs.
+- Validate this identity matrix:
+  - all three inputs agree on `dataset_id` and source SHA-256 identity;
+  - occurrence/report agree on source, retrieval metadata, licence/citation, and occurrence mapping version wherever both schemas contain the field;
+  - taxonomy/report agree on source and taxonomy mapping version wherever both contain the field;
+  - actual occurrence/taxonomy digests agree with `output_files`.
+- Fail before temporary outputs. Use stable codes and identify the affected logical file/field without exposing records.
+- Write no readiness report for a structurally invalid or integrity-failed bundle.
+
+Minimum codes: `missing_bundle_checksum`, `duplicate_bundle_checksum`, `occurrence_checksum_mismatch`, `taxonomy_checksum_mismatch`, and `bundle_metadata_mismatch`.
+
+#### 2. Commit outputs as one atomic pair
+
+Each output is replaced atomically by itself, but a failed second replacement can pair a new manifest with an old/missing report.
+
+Required behavior:
+
+- Serialize and validate both outputs before touching final paths; stage both in the destination directory.
+- Without overwrite, fail before staging if either final path exists.
+- With overwrite, preserve recoverable backups. Restore the exact old pair if either replacement or read-back fails.
+- With no old pair, remove a committed first file if the second commit fails.
+- Clean temporary/backup files on success and every handled failure.
+- Read both final files through Pydantic and verify cross-identifiers and the recorded SHA-256 relationship; roll back on failure.
+
+Fault-injection tests must fail the second replacement for new and overwrite destinations, proving no partial pair remains and the old pair is byte-identical after rollback.
+
+#### 3. Make `geographic_scope` explicit
+
+`geographic_scope` is a free-text label; it neither filters records nor proves they fall inside a region. Do not silently add an unspecified filter.
+
+- Require a non-blank label.
+- Add a versioned `geographic_scope_mode = "label_only"` field to configuration and outputs.
+- Emit `geographic_scope_not_enforced` (or an equivalently stable code) in label-only mode.
+- State that region-specific readiness is unverified and never remove records only because of the label.
+
+A later approved profile may use bounds, polygons, ecoregions, or states, but must record geometry source/version, CRS, boundary convention, and exclusion counts.
+
+#### 4. Separate quality flags from cleaning actions
+
+`counts_by_exclusion_flag` is populated from `cleaning_actions`; its name is misleading and the approved quality-flag summary is absent.
+
+- Add `counts_by_quality_flag` across all relevant records, including usable records.
+- Add `counts_by_cleaning_action` for actual cleaning/exclusion actions.
+- Count each distinct value once per record and sort keys deterministically.
+- Keep `counts_by_exclusion_flag` for one compatible revision only as a deprecated alias for cleaning-action counts.
+- Advance the report schema version and regenerate checked-in schemas.
+
+Test a usable flagged record, an excluded record with flag/action, and repeated values, asserting exact counts.
+
+#### 5. Tighten configuration and versions
+
+- Accept only supported schema/configuration versions; reject unknown versions.
+- Trim and reject blank `experiment_id` and `geographic_scope`.
+- Reject empty `target_taxa`, blank names, and duplicates.
+- Preserve scientific-name spelling/case unless normalization is separately versioned.
+- Retain `extra="forbid"` and export every changed public model.
+
+Test versions, whitespace, duplicates, and valid Unicode scientific names.
+
+#### 6. Complete temporal and CLI/documentation coverage
+
+The approved per-time-range summary is incomplete. Add:
+
+- `counts_by_event_year` for valid cleaned four-digit years;
+- `undated_usable_record_count` for usable records without a valid year;
+- documentation that these are descriptive counts, not seasonality or suitability evidence.
+
+Also directly test CLI exit codes 0, 1, and 2, argument wiring, overwrite, and fatal rendering. Correct README semantics: missing/unreadable inputs are fatal with no output; missing authorised S1 is a non-fabricated readiness state. Add `prepare-geo-experiment` to the CLI inventory and align the data card with final fields.
+
+#### Required offline tests
+
+Cover schema-valid occurrence/taxonomy tampering; missing/duplicate checksums; identity mismatches; second-commit/read-back failures for new and overwrite destinations; restoration and temp cleanup; exact flag/action counts; label-only scope semantics; time summaries; strict config/version validation; and direct CLI success, readiness-blocked, and fatal paths.
+
+Existing tests retain meaning. Record pytest/coverage, Ruff, Pyright, schema verification, CLI smoke, and `git diff --check`.
+
+#### Implementation constraints
+
+- Use only `S3-design-offline-first`; do not create another branch.
+- Separate I/O from pure identity checks, summaries, and pair commits.
+- Use small typed functions, explicit names, narrow Protocols where useful, and rationale comments.
+- Add no PydanticAI, FastAPI, LLM SDK, live client, training library, network test, dataset, generated bundle, secret, or sensitive coordinates.
+- Update README, data card, example config, and exported schemas.
+- After implementation, append to `WorkLog.md` with order, files, exact defaults, commands/results, limitations, and maintenance guidance. Do not edit old entries.
+
+#### Definition of done
+
+- [ ] Exact input bytes are authenticated against the import report.
+- [ ] Identity comparisons are explicit, versioned, and tested.
+- [ ] Manifest/report commit or roll back as one pair with no leaked temporary files.
+- [ ] Scope cannot be mistaken for an enforced filter.
+- [ ] Quality flags and cleaning actions have separate accurate summaries.
+- [ ] Event-year and undated counts satisfy the descriptive time requirement.
+- [ ] Unsupported versions and malformed configuration fail safely.
+- [ ] CLI exit behavior has direct tests and documentation matches actual outcomes.
+- [ ] Existing scoring, fusion, risk, provider, and response behavior is unchanged.
+- [ ] No model, calibration, API, LLM, or other FlyTech agent is required.
+- [ ] Full verification passes and `WorkLog.md` receives an append-only record.
+
+#### Consistency and sequencing
+
+This hardens the approved offline preparation gate; it does not supersede Milestone 2 or claim ecological performance. Recommended order: approve this entry, copy normative requirements into `EarlyDesign.md`, implement and verify on `S3-design-offline-first`, then merge to `main`. Until then, `ea0a5e2` is a working prototype, not the final Milestone 2 input contract.
