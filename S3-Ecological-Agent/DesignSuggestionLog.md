@@ -755,3 +755,48 @@ Existing tests retain meaning. Record pytest/coverage, Ruff, Pyright, schema ver
 #### Consistency and sequencing
 
 This hardens the approved offline preparation gate; it does not supersede Milestone 2 or claim ecological performance. Recommended order: approve this entry, copy normative requirements into `EarlyDesign.md`, implement and verify on `S3-design-offline-first`, then merge to `main`. Until then, `ea0a5e2` is a working prototype, not the final Milestone 2 input contract.
+
+### 2026-08-29 22:20 Australia/Sydney - Approval: readiness integrity and contract corrections
+
+**Status:** Owner-approved implementation requirement. The project owner
+approves the complete 2026-08-29 20:18 suggestion, including bundle
+authentication, atomic output-pair commit and rollback, explicit label-only
+geographic scope, separate quality-flag and cleaning-action summaries, strict
+configuration/version validation, temporal summaries, CLI/documentation
+coverage, and their required offline tests. Implementation may be divided into
+bounded reviewable rounds, but all six sections remain part of the approved
+increment.
+
+#### Document responsibilities from this entry onward
+
+This entry supersedes the earlier process instruction that every approved
+requirement must be copied into EarlyDesign.md.
+
+- EarlyDesign.md is a stable reference for the original S3 workflow and
+  prototype design. Do not modify it for later suggestions or implementation
+  increments unless the project owner explicitly reverses this decision.
+- DesignSuggestionLog.md is the append-only authority for every later design
+  suggestion, approval, correction, superseding decision, and proposed
+  modification. New implementation work must cite the applicable entry here.
+- WorkLog.md records only verified code additions, deletions, and
+  modifications; affected behavior and usage; actual verification results;
+  limitations; and maintenance guidance. It must not record the mechanics of
+  which external coding assistant was supervised.
+- Every WorkLog.md implementation entry must explicitly state whether a
+  mathematical formula, decision equation, threshold rule, or numeric
+  parameter changed.
+- If no mathematical behavior changed, record that fact explicitly.
+- If mathematical behavior changed, record the previous and new formulas,
+  define every symbol, list each current variable or parameter value and unit,
+  identify the implementation location, and explain compatibility,
+  calibration, and evaluation impact.
+
+#### Scope and sequencing
+
+The approved hardening remains offline and must not implement or require S1,
+S5, another FlyTech agent, a live API, an LLM in the S3 runtime, model training,
+threshold calibration, or biological-performance claims. Do not change the
+existing geographic-support, fusion, reranking, risk-state, expert-review,
+uncertainty, or processing-status formulas while implementing this increment.
+EarlyDesign.md remains unchanged under the document-responsibility decision
+above.
