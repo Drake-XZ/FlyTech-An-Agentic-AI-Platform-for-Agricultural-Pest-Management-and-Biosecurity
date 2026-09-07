@@ -1632,3 +1632,117 @@ This increment adds only integrity and descriptive reporting equations:
 - No real dataset, generated experiment output, sensitive coordinate file,
   secret, external-agent supervision file, or new runtime dependency was
   added.
+
+## 2026-09-07 22:26 Australia/Sydney - Record completion audit and acquire bounded Milestone 2 resources
+
+### Scope and order of work
+
+1. Audited the implemented Milestone 1.5 importer, offline pre-Milestone 2
+   readiness builder, and readiness-contract hardening against their recorded
+   definitions of done.
+2. Appended the completion evidence to `DesignSuggestionLog.md` and updated
+   only the owner-authorised completion checklist and date in `EarlyDesign.md`.
+   Conditional research-validation items remain open.
+3. Added a resumable research-only downloader for a bounded four-genus M2
+   dataset. The downloader is outside `src/s3_ecological/` and is not reachable
+   from the S3 runtime or provider factory.
+4. Downloaded official `geo_prior` paper code, bounded GBIF and ALA occurrence
+   metadata, iNaturalist observation metadata, and one medium image per
+   candidate observation into Git-ignored local directories.
+5. Wrote a resource inventory, per-file metadata checksums, an image-level
+   provenance/licence/SHA-256 index, and an explicit failed-image report.
+
+### Files and components created or modified
+
+- `DesignSuggestionLog.md` - append-only completion audit for the three
+  implemented pre-M2 increments.
+- `EarlyDesign.md` - owner-authorised date and engineering-prototype checklist
+  status update; the outstanding model-card and conditional validation items
+  remain unchecked.
+- `.gitignore` - excludes `data/external/` and `research/third_party/` so
+  downloaded datasets, images, and third-party repositories cannot be
+  accidentally committed.
+- `scripts/download_m2_resources.py` - resumable standard-library downloader
+  with bounded paging, transient-error retries, exact media extensions,
+  licence retention, checksums, failure reporting, and configurable image
+  concurrency.
+- `docs/m2_resource_inventory.md` - local locations, counts, sizes, upstream
+  totals, exact `geo_prior` commit, licence boundaries, and reproduction
+  command.
+- `data/external/m2/` - local-only downloaded data and manifests; ignored by
+  Git.
+- `research/third_party/geo_prior/` - local-only official source checkout at
+  paper commit `257dc7e30f3cc6bf02fbec55ee878724d077fe61`; ignored by Git.
+
+### Downloaded resources and current behavior
+
+The bounded GBIF acquisition contains 9,689 `Anastrepha` records and 10,000
+records for each of `Bactrocera`, `Ceratitis`, and `Rhagoletis`, all requested
+with coordinates. Upstream totals at acquisition time were 9,689, 86,669,
+18,430, and 11,842 respectively. The per-genus 10,000 cap prevents one
+high-volume genus from dominating this preparation set; it is an engineering
+sampling boundary, not a biological threshold.
+
+The spatially valid ALA acquisition contains 51 `Anastrepha`, 5,000
+`Bactrocera`, 952 `Ceratitis`, and 15 `Rhagoletis` records. ALA reported
+39,767 `Bactrocera` records but its public search endpoint stopped returning
+deep-page records after 5,000; the shortfall is recorded rather than inferred
+or silently filled.
+
+The iNaturalist-through-GBIF acquisition contains 7,128 coordinate-bearing
+observations with still images: 397 `Anastrepha`, 1,756 `Bactrocera`, 2,086
+`Ceratitis`, and 2,889 `Rhagoletis`. One medium image was requested per
+observation. 7,118 images downloaded successfully and 10 unavailable upstream
+objects returned HTTP 404 and remain in `image_failures.json`. The complete
+local resource directory contains 7,133 files and 1,050,337,572 bytes, with no
+leaked `.partial` files.
+
+The successful image index retains record and media licences separately: 6,041
+CC BY-NC 4.0, 736 CC BY 4.0, 189 CC0 1.0, 68 CC BY-NC-ND 4.0, 51 CC BY-NC-SA
+4.0, 32 CC BY-SA 4.0, and one CC BY-ND 4.0 image. The 69 ND images must not be
+used as transformed training data without separate review and authorisation;
+NC material remains limited to permitted non-commercial use.
+
+The historical pretrained model URL embedded in the official `geo_prior` demo
+returned HTTP 404 over both HTTP and HTTPS. No unauthenticated third-party
+weight was substituted. The exact paper-code checkout, bundled demo assets,
+and fruit-fly preparation data are available for the next approved step.
+
+### Mathematical-formula and parameter impact
+
+No ecological-support, geographic-distance, visual/geographic fusion,
+reranking, risk-state precedence, expert-review, uncertainty, or processing
+formula changed. No runtime model parameter, calibrated threshold, Profile
+v0.1 default, schema, provider, or public assessment contract changed.
+
+The `10,000` per-source/per-genus record cap and download worker/page sizes are
+data-acquisition controls only. They do not participate in model inference,
+fusion, risk classification, or readiness status. SHA-256 is used only for
+downloaded-file integrity and provenance.
+
+### Verification completed
+
+- `python -m pytest -q` - `254 passed`, `2 skipped`; the two expected skips are
+  the optional `pydantic_ai` adapter tests.
+- `python -m ruff check .` - passed.
+- `python -m pyright` - `0 errors`, `0 warnings`, `0 informations`.
+- `git diff --check` - passed; only line-ending conversion warnings were
+  reported for existing Windows working-copy files.
+- Download audit - 7,133 data files, 1,050,337,572 bytes, 7,118 successful
+  image files, 10 explicit failures, and zero `.partial` files.
+- Official source identity - `geo_prior` resolves to
+  `257dc7e30f3cc6bf02fbec55ee878724d077fe61`.
+
+### Limitations and maintenance guidance
+
+- These resources prepare M2 but do not constitute an approved trained model,
+  an authorised S1 evaluation input, or a biological-performance result.
+- Public availability and a media/data licence must not be treated as the
+  project authorisation declaration required by the readiness gate.
+- GBIF and ALA records may overlap. Deduplicate by stable occurrence/source
+  identifiers before cleaning, splitting, or training.
+- Exclude held-out iNaturalist observations from both the geographic-prior
+  training set and S1 training data to prevent spatial and image leakage.
+- Preserve the generated manifest and image index when deriving an authorised
+  snapshot; do not commit raw coordinates, downloaded images, or third-party
+  source trees to this repository.

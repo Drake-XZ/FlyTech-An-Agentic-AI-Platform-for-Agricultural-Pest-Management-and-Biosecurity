@@ -800,3 +800,91 @@ existing geographic-support, fusion, reranking, risk-state, expert-review,
 uncertainty, or processing-status formulas while implementing this increment.
 EarlyDesign.md remains unchanged under the document-responsibility decision
 above.
+
+### 2026-09-07 Australia/Sydney - Completion audit before Milestone 2 planning
+
+**Status:** Owner-requested documentation status update. This append-only entry
+records completion evidence from the implemented code and `WorkLog.md` without
+rewriting the historical suggestion and approval entries above. The owner's
+request also explicitly authorises updating the current checklist state in
+`EarlyDesign.md`; it does not alter any formula, threshold, interface, model,
+or runtime behavior.
+
+#### Milestone 1.5 completion status
+
+The definition of done recorded in the 2026-08-28 22:52 suggestion is complete:
+
+- ✅ One documented command imports GBIF-, ALA-, and generic Darwin Core-compatible local tables.
+- ✅ No network or credential is required.
+- ✅ All three outputs validate against versioned schemas.
+- ✅ Occurrence and taxonomy identifiers work together end to end.
+- ✅ Generated snapshots work through existing provider Protocols and factory.
+- ✅ Evidence retains provenance, licence, checksum, and snapshot identity.
+- ✅ Fatal writes are atomic and partial row rejection is transparent.
+- ✅ The existing cleaner remains authoritative for ecological usability and duplicates.
+- ✅ Profile v0.1 scoring, fusion, thresholds, and risk semantics are unchanged.
+- ✅ Offline import-to-assessment integration passes.
+- ✅ All pre-existing tests, Ruff, and Pyright pass.
+- ✅ README, configuration, schemas, data card, and `WorkLog.md` are updated.
+- ✅ No large or unapproved real dataset is committed.
+- ✅ No result is described as biological validation, absence evidence, or incursion probability.
+
+Evidence is recorded in `WorkLog.md` under
+`2026-08-29 00:20 Australia/Sydney`.
+
+#### Offline pre-Milestone 2 readiness-builder completion status
+
+The definition of done recorded in the 2026-08-29 17:16 suggestion is complete:
+
+- ✅ One offline command validates a local snapshot bundle and writes both versioned artifacts.
+- ✅ Data authorisation is explicit and never inferred.
+- ✅ The four TF4 genera are summarized and missing coverage is visible.
+- ✅ Existing cleaning logic remains authoritative.
+- ✅ Spatial blocks are deterministic and never cross splits.
+- ✅ Split parameters and identities are fully recorded.
+- ✅ Missing S1 produces overall status `not_run_missing_authorised_data` with reason `missing_authorised_s1_outputs`.
+- ✅ Synthetic tests produce `engineering_fixture_only`.
+- ✅ No model is trained and no threshold is calibrated.
+- ✅ No network, external agent, API key, or LLM is required.
+- ✅ Existing scoring, fusion, risk, provider, and response behavior is unchanged.
+- ✅ All new schemas are exported and documented.
+- ✅ Tests, Ruff, Pyright, schema export, and CLI smoke tests pass.
+- ✅ README, data card, and `WorkLog.md` are updated.
+- ✅ No real dataset, generated experiment bundle, or sensitive coordinate file is committed.
+
+Evidence is recorded in `WorkLog.md` under
+`2026-08-29 18:20 Australia/Sydney`.
+
+#### Readiness integrity and contract-hardening completion status
+
+The definition of done recorded in the 2026-08-29 20:18 suggestion is complete:
+
+- ✅ Exact input bytes are authenticated against the import report.
+- ✅ Identity comparisons are explicit, versioned, and tested.
+- ✅ Manifest/report commit or roll back as one pair with no leaked temporary files.
+- ✅ Scope cannot be mistaken for an enforced filter.
+- ✅ Quality flags and cleaning actions have separate accurate summaries.
+- ✅ Event-year and undated counts satisfy the descriptive time requirement.
+- ✅ Unsupported versions and malformed configuration fail safely.
+- ✅ CLI exit behavior has direct tests and documentation matches actual outcomes.
+- ✅ Existing scoring, fusion, risk, provider, and response behavior is unchanged.
+- ✅ No model, calibration, API, LLM, or other FlyTech agent is required.
+- ✅ Full verification passes and `WorkLog.md` receives an append-only record.
+
+Evidence is recorded in `WorkLog.md` under
+`2026-08-29 23:58 Australia/Sydney`, including 254 passed tests, 2 expected
+optional-dependency skips, 93.83% coverage, Ruff passing, and Pyright reporting
+zero errors or warnings.
+
+#### Items intentionally left incomplete
+
+- [ ] `EarlyDesign.md` section 23.1's model-card item remains open because no
+  model card exists for the current heuristic geographic baseline.
+- [ ] All conditional research-validation items in `EarlyDesign.md` section
+  23.2 remain open because no approved real evaluation dataset, authorised S1
+  outputs, learned geographic model, or biological-performance evaluation has
+  been supplied or completed.
+
+The current research-validation status therefore remains
+`not_run_missing_authorised_data`. This completion audit does not claim that
+Milestone 2 model training or evaluation has begun or completed.

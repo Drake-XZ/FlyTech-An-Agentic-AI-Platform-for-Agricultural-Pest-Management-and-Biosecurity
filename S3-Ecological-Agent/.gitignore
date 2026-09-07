@@ -7,3 +7,5 @@ htmlcov/
 json_schemas/
 *.egg-info/
 .venv/
+data/external/
+research/third_party/

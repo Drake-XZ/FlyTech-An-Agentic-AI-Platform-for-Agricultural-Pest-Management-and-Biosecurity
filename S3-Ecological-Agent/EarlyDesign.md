@@ -2,7 +2,7 @@
 
 **Document status:** Early design specification for implementation agents<br>
 **Prepared from:** FlyTech Week 4 materials<br>
-**Last updated:** 29 August 2026<br>
+**Last updated:** 7 September 2026<br>
 **Primary target:** A testable proof-of-concept for fruit-fly identification and biosecurity decision support
 
 ## 1. Purpose of This Document
@@ -1144,37 +1144,37 @@ Do not begin a later milestone until the previous milestone has a runnable demo 
 
 The first fixture-backed S3 engineering prototype is complete only when all of the following are true:
 
-- [ ] A validated request with S1 candidates, location, and optional date can be processed end to end.
-- [ ] The S1 request used by standalone tests is a fixture or schema-compatible external payload; no S1 implementation is required.
-- [ ] Taxon names are resolved with raw and accepted forms preserved.
-- [ ] In-memory and local-snapshot occurrence adapters work through the same interface intended for future GBIF/ALA adapters.
-- [ ] The prototype starts, demonstrates its full workflow, and passes tests without API credentials, live providers, or network access.
-- [ ] The same core ecological assessment can run with `S3_LLM_ENABLED=false`, and the default prototype does not require an external LLM.
-- [ ] PydanticAI, if present, is confined to the agent adapter and can be replaced without modifying deterministic ecological modules.
-- [ ] A mock or offline test model exercises typed agent tools and validated outputs without making a model API call.
-- [ ] Real LLM providers are configuration-selected adapters; no provider SDK or model name is hard-coded into domain logic.
-- [ ] Agent-generated prose cannot override the authoritative structured scores, risk state, thresholds, evidence, or provenance.
-- [ ] Unconfigured live providers return an explicit safe status and do not prevent other S3 functions from running.
-- [ ] Future GBIF/ALA integration can be added as an adapter without changing the core cleaning, fusion, risk, evidence, or public-schema logic.
-- [ ] Occurrence records retain source IDs, query details, coordinate precision, dates, licences, and cleaning flags.
-- [ ] A simple geographic baseline produces candidate support scores.
-- [ ] S1 and ecological scores are combined through documented soft fusion.
-- [ ] Output contains reranked candidates, component scores, evidence, uncertainty, missing evidence, versions, and risk state.
-- [ ] No-data and provider-failure cases return safe partial results.
-- [ ] All v0.1 golden acceptance fixtures pass through the documented CLI and library entry point.
-- [ ] Potential-incursion cases require review and are never presented as confirmed incursions.
-- [ ] Unit, integration, and safety tests pass without network access.
-- [ ] Formatting, linting, and static type checks pass for all S3-owned code.
-- [ ] Core deterministic modules meet the documented coverage target, or an explicit evidence-based exception is recorded.
-- [ ] Public interfaces and non-obvious ecological or scoring decisions have accurate docstrings or concise rationale comments.
-- [ ] A provider and a model can each be replaced by a fixture or test double without changing the core decision pipeline.
-- [ ] Import-boundary checks show that the core does not depend on PydanticAI, FastAPI, or an external LLM SDK.
-- [ ] The implementation contains no unexplained magic thresholds, duplicated scoring logic, provider objects leaking into domain logic, or vague permanent TODOs.
-- [ ] A README explains setup, demo commands, configuration, data acquisition, and limitations.
+- ✅ A validated request with S1 candidates, location, and optional date can be processed end to end.
+- ✅ The S1 request used by standalone tests is a fixture or schema-compatible external payload; no S1 implementation is required.
+- ✅ Taxon names are resolved with raw and accepted forms preserved.
+- ✅ In-memory and local-snapshot occurrence adapters work through the same interface intended for future GBIF/ALA adapters.
+- ✅ The prototype starts, demonstrates its full workflow, and passes tests without API credentials, live providers, or network access.
+- ✅ The same core ecological assessment can run with `S3_LLM_ENABLED=false`, and the default prototype does not require an external LLM.
+- ✅ PydanticAI, if present, is confined to the agent adapter and can be replaced without modifying deterministic ecological modules.
+- ✅ A mock or offline test model exercises typed agent tools and validated outputs without making a model API call.
+- ✅ Real LLM providers are configuration-selected adapters; no provider SDK or model name is hard-coded into domain logic.
+- ✅ Agent-generated prose cannot override the authoritative structured scores, risk state, thresholds, evidence, or provenance.
+- ✅ Unconfigured live providers return an explicit safe status and do not prevent other S3 functions from running.
+- ✅ Future GBIF/ALA integration can be added as an adapter without changing the core cleaning, fusion, risk, evidence, or public-schema logic.
+- ✅ Occurrence records retain source IDs, query details, coordinate precision, dates, licences, and cleaning flags.
+- ✅ A simple geographic baseline produces candidate support scores.
+- ✅ S1 and ecological scores are combined through documented soft fusion.
+- ✅ Output contains reranked candidates, component scores, evidence, uncertainty, missing evidence, versions, and risk state.
+- ✅ No-data and provider-failure cases return safe partial results.
+- ✅ All v0.1 golden acceptance fixtures pass through the documented CLI and library entry point.
+- ✅ Potential-incursion cases require review and are never presented as confirmed incursions.
+- ✅ Unit, integration, and safety tests pass without network access.
+- ✅ Formatting, linting, and static type checks pass for all S3-owned code.
+- ✅ Core deterministic modules meet the documented coverage target, or an explicit evidence-based exception is recorded.
+- ✅ Public interfaces and non-obvious ecological or scoring decisions have accurate docstrings or concise rationale comments.
+- ✅ A provider and a model can each be replaced by a fixture or test double without changing the core decision pipeline.
+- ✅ Import-boundary checks show that the core does not depend on PydanticAI, FastAPI, or an external LLM SDK.
+- ✅ The implementation contains no unexplained magic thresholds, duplicated scoring logic, provider objects leaking into domain logic, or vague permanent TODOs.
+- ✅ A README explains setup, demo commands, configuration, data acquisition, and limitations.
 - [ ] Relevant data cards, model cards, licence notes, and experiment records exist.
-- [ ] Versioned interface schemas and examples exist for all external-module boundaries used by S3.
-- [ ] Tests pass with mocks or fixtures when S1, S2, S4, S5, S6, and the orchestrator are unavailable.
-- [ ] No non-S3 agent logic, orchestrator routing logic, application logic, or expert-workflow implementation has been added to the S3 repository.
+- ✅ Versioned interface schemas and examples exist for all external-module boundaries used by S3.
+- ✅ Tests pass with mocks or fixtures when S1, S2, S4, S5, S6, and the orchestrator are unavailable.
+- ✅ No non-S3 agent logic, orchestrator routing logic, application logic, or expert-workflow implementation has been added to the S3 repository.
 
 ### 23.2 Conditional research-validation definition of done
 
