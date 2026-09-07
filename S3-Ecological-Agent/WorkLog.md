@@ -1746,3 +1746,63 @@ downloaded-file integrity and provenance.
 - Preserve the generated manifest and image index when deriving an authorised
   snapshot; do not commit raw coordinates, downloaded images, or third-party
   source trees to this repository.
+
+## 2026-09-07 22:49 Australia/Sydney - Commit the bounded M2 resource snapshot and vendored source
+
+### Owner-authorised storage-policy update
+
+The project owner explicitly authorised committing the bounded M2 data and
+third-party `geo_prior` source because both are required for later training,
+and instructed that `.gitignore` need not be included in this follow-up
+change. The existing directory exclusions therefore remain as a guard against
+unreviewed future downloads, while this reviewed snapshot is explicitly added
+to version control. This entry supersedes only the repository-storage
+statements in the immediately preceding 22:26 entry. It does not change data
+provenance, licence conditions, experiment authorisation, model scope, or
+scientific claims.
+
+### Changes
+
+- Left `.gitignore` unchanged from the preceding commit and explicitly staged
+  only the reviewed data and third-party source snapshot.
+- Added `.gitattributes` with `data/external/m2/** -text` so Windows checkout
+  cannot rewrite line endings and invalidate the recorded byte-level SHA-256
+  values.
+- Added the complete bounded `data/external/m2/` snapshot: GBIF and ALA JSONL,
+  iNaturalist metadata, 7,118 available medium images, the 10-record upstream
+  failure report, the image-level provenance/licence/SHA-256 index, and the
+  download manifest.
+- Converted the official `geo_prior` checkout into a vendored source tree at
+  commit `257dc7e30f3cc6bf02fbec55ee878724d077fe61` so its files, rather than an
+  embedded-repository pointer, are versioned by FlyTech.
+- Added `research/third_party/geo_prior/FlyTech_VENDORING.md` with upstream
+  identity, purpose, the absent upstream LICENSE warning, and the unavailable
+  historical pretrained-weight status.
+- Updated `docs/m2_resource_inventory.md` to describe the committed snapshot
+  rather than a Git-ignored local resource.
+
+### Mathematical-formula and parameter impact
+
+No formula, decision equation, model parameter, calibration value, risk
+threshold, readiness rule, schema, runtime dependency, or public interface
+changed. This increment changes repository storage and provenance records only.
+The existing 10,000-record acquisition cap is unchanged and remains a data
+collection control rather than an inference or biological threshold.
+
+### Licence and reproducibility boundary
+
+The committed image index remains the authoritative per-file attribution and
+media-licence record. The 69 ND images remain unsuitable for transformed
+training data without separate review, and NC resources remain limited to
+permitted non-commercial use. The upstream `geo_prior` commit contains no
+explicit LICENSE file; owner-authorised project storage must not be presented
+as a new downstream licence. Public data availability and repository storage
+still do not satisfy the readiness gate's separate experiment-authorisation
+requirement.
+
+### Verification required before push
+
+Verify that no staged blob exceeds the remote's per-file size limit, that no
+nested `.git` metadata is committed, that the image index still matches the
+committed image set, and that pytest, Ruff, Pyright, and `git diff --check`
+remain clean. Record the executed results in the commit/push report.

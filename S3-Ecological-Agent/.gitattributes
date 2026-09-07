@@ -1,0 +1,6 @@
+# Preserve downloaded M2 artifacts byte-for-byte so manifest checksums remain valid.
+data/external/m2/** binary
+
+# Preserve the upstream snapshot exactly and do not lint historical whitespace.
+research/third_party/geo_prior/** binary
+research/third_party/geo_prior/FlyTech_VENDORING.md text diff eol=lf

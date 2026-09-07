@@ -1,0 +1,137 @@
+{
+  "gbif_counts": {
+    "Anastrepha": {
+      "downloaded": 9689,
+      "source_total": 9689
+    },
+    "Bactrocera": {
+      "downloaded": 10000,
+      "source_total": 86669
+    },
+    "Ceratitis": {
+      "downloaded": 10000,
+      "source_total": 18430
+    },
+    "Rhagoletis": {
+      "downloaded": 10000,
+      "source_total": 11842
+    }
+  },
+  "ala_counts": {
+    "Anastrepha": {
+      "downloaded": 51,
+      "source_total": 51
+    },
+    "Bactrocera": {
+      "downloaded": 5000,
+      "source_total": 39767
+    },
+    "Ceratitis": {
+      "downloaded": 952,
+      "source_total": 952
+    },
+    "Rhagoletis": {
+      "downloaded": 15,
+      "source_total": 15
+    }
+  },
+  "inaturalist_counts": {
+    "Anastrepha": {
+      "downloaded": 397,
+      "source_total": 397
+    },
+    "Bactrocera": {
+      "downloaded": 1756,
+      "source_total": 1756
+    },
+    "Ceratitis": {
+      "downloaded": 2086,
+      "source_total": 2086
+    },
+    "Rhagoletis": {
+      "downloaded": 2889,
+      "source_total": 2889
+    }
+  },
+  "inaturalist_image_candidates": 7128,
+  "inaturalist_images_downloaded": 7118,
+  "inaturalist_images_failed": 10,
+  "generated_at": "2026-09-07T11:58:36.178838+00:00",
+  "sources": {
+    "gbif_api": "https://api.gbif.org/v1/occurrence/search",
+    "ala_api": "https://biocache-ws.ala.org.au/ws/occurrences/search",
+    "inaturalist_dataset_key": "50c9509d-22c7-4a22-a47d-8c48425ef4a7"
+  },
+  "metadata_files": [
+    {
+      "path": "ala/anastrepha.jsonl",
+      "bytes": 84993,
+      "sha256": "9e5b2254b555a54b2733454824fa0314285d4b2b4a34ac504aa56d951eff9b7b"
+    },
+    {
+      "path": "ala/bactrocera.jsonl",
+      "bytes": 10135157,
+      "sha256": "93e823f2f3a8e674b27ef69f046cedfbde7f4fb09e89bda6f711944025590d1c"
+    },
+    {
+      "path": "ala/ceratitis.jsonl",
+      "bytes": 1930523,
+      "sha256": "c52d2b07a5079c724561cb4f09dfe1d6c38fce006fcd3f97c779dcf2e7a4f6c9"
+    },
+    {
+      "path": "ala/rhagoletis.jsonl",
+      "bytes": 25861,
+      "sha256": "685ca03059146b650350e9dcc7ab2d771d86663443660465fc7552999c293f3f"
+    },
+    {
+      "path": "gbif/anastrepha.jsonl",
+      "bytes": 57464805,
+      "sha256": "0db36be749866fbb91f8bb4433da031a6da96625c85f7a20e2356d577dd60cc8"
+    },
+    {
+      "path": "gbif/bactrocera.jsonl",
+      "bytes": 60418127,
+      "sha256": "d93302b7d7f4371595f4f66217dcac6570af3ea9441541d8f88a73ce5d7c3fbb"
+    },
+    {
+      "path": "gbif/ceratitis.jsonl",
+      "bytes": 61983533,
+      "sha256": "1aff90816fa348338911543acc485e41b78a805f71bbc7f6e88c93aa84a446c5"
+    },
+    {
+      "path": "gbif/rhagoletis.jsonl",
+      "bytes": 62230764,
+      "sha256": "df4d0429222804bccac8199818c9e12964ea11f4c89c40eab04465a72637ab33"
+    },
+    {
+      "path": "inaturalist/image_failures.json",
+      "bytes": 7889,
+      "sha256": "3f49fbbe6fc3465db07f371b360bfa22a03d27c992a8fb279b9251a43f2f5015"
+    },
+    {
+      "path": "inaturalist/image_index.csv",
+      "bytes": 3897540,
+      "sha256": "44b3a47d25bf0326533be1e4e25ef4a443540f3aaab05a898b168e7b15873c63"
+    },
+    {
+      "path": "inaturalist/metadata/anastrepha.jsonl",
+      "bytes": 2973136,
+      "sha256": "c35a6e8173155ef1a818c9d4120a0389624e4a1928050d38b0cd52b9f80483fd"
+    },
+    {
+      "path": "inaturalist/metadata/bactrocera.jsonl",
+      "bytes": 13455995,
+      "sha256": "a78c9575129d244027d18dd405b98ae5a0b16b09fca0d4fbcded9ea54bf9f0d7"
+    },
+    {
+      "path": "inaturalist/metadata/ceratitis.jsonl",
+      "bytes": 16382182,
+      "sha256": "20491ffe83faeb50fd8b592eff30fb156f326a83870fc4bee8404da5afbedc96"
+    },
+    {
+      "path": "inaturalist/metadata/rhagoletis.jsonl",
+      "bytes": 21666839,
+      "sha256": "7382c68478e8a0ac9610c3754a89eccb9f36c61187a96f82cac14b0fb6aae528"
+    }
+  ]
+}

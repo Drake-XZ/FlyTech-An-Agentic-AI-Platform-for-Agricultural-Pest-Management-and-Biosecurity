@@ -1,8 +1,10 @@
 # Milestone 2 Local Resource Inventory
 
-Downloaded on 7 September 2026 for bounded, offline M2 preparation. The raw
-resources below are intentionally excluded from Git; this inventory and the
-reproducible downloader are the reviewable project records.
+Downloaded on 7 September 2026 for bounded, offline M2 preparation. The
+project owner subsequently authorised committing this bounded resource
+snapshot and the vendored third-party source to the repository. The manifest,
+licence index, and reproducible downloader remain the reviewable provenance
+records.
 
 ## Locations
 
@@ -48,6 +50,10 @@ metadata, demo assets, training code, and evaluation code. The pretrained
 `model_inat_2018_full_final.pth.tar` URL embedded in the historical demo
 returned HTTP 404 on both HTTP and HTTPS on 7 September 2026, so no weight file
 was substituted from an unauthenticated third party.
+
+That upstream commit does not contain an explicit LICENSE file. See
+`research/third_party/geo_prior/FlyTech_VENDORING.md`; repository inclusion
+must not be interpreted as granting downstream reuse rights.
 
 ## Licence boundary
 
