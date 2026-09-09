@@ -52,6 +52,10 @@ from s3_ecological.experiments.record_counts import (
     counts_by_quality_flag,
     undated_usable_record_count,
 )
+from s3_ecological.experiments.s1_bundle import (
+    S1BundleValidationError,
+    validate_s1_evaluation_bundle,
+)
 from s3_ecological.experiments.spatial_split import (
     LatitudeLongitudeGridV0,
     OccurrenceForSplit,
@@ -259,8 +263,32 @@ def prepare_geo_experiment(
         else []
     )
     authorisation_reasons = evaluate_authorisation(config.authorisation)
+    validated_s1_input = False
+    s1_validation_error: str | None = None
+    if (
+        config.s1_evaluation_input_path is not None
+        and config.data_nature is DataNature.REAL_WORLD_DATA
+    ):
+        try:
+            validate_s1_evaluation_bundle(
+                manifest_path=config.s1_evaluation_input_path,
+                expected_authorisation_reference=(
+                    config.authorisation.authorisation_reference or ""
+                ),
+                expected_spatial_split_identity=split_identity,
+                test_source_record_ids={
+                    row.source_record_id or "" for row in rows if row.split is SplitName.TEST
+                },
+                settings=settings,
+            )
+        except S1BundleValidationError as exc:
+            s1_validation_error = str(exc)
+        else:
+            validated_s1_input = True
     s1_input_status, s1_reasons = evaluate_s1_input(
-        s1_evaluation_input_path=config.s1_evaluation_input_path, data_nature=config.data_nature
+        s1_evaluation_input_path=config.s1_evaluation_input_path,
+        data_nature=config.data_nature,
+        validated_s1_input=validated_s1_input,
     )
     data_quality_reasons = evaluate_data_quality(
         usable_record_count=len(usable),
@@ -293,6 +321,8 @@ def prepare_geo_experiment(
         single_block=len(split_result.counts_by_block) <= 1 and bool(usable),
         s1_missing=s1_input_status.value == "missing",
     )
+    if s1_validation_error is not None:
+        warnings.append("S1 bundle was supplied but failed validation: " + s1_validation_error)
 
     configuration_digest = _configuration_digest(config, settings)
     occurrence_identity = OccurrenceSnapshotIdentity(

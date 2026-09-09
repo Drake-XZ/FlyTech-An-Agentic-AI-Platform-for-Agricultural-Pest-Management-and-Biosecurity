@@ -253,8 +253,13 @@ tests/
   golden/         the six EarlyDesign.md section 20.3 acceptance cases
 docs/decisions/   ADRs for the non-obvious implementation choices
 config/           example TOML configuration files (not loaded by default)
-data/, models/    empty placeholders; no real data or model artifact is
-                  committed in this prototype
+data/, models/    empty placeholders for this prototype's own runtime, plus
+                  data/external/m2/ (real, bounded GBIF/ALA occurrence and
+                  iNaturalist image data) and data/local/ (gitignored real
+                  M2 conversion/bundle/readiness outputs) - see
+                  docs/m2_resource_inventory.md and
+                  docs/data_cards/m2_occurrence_table_v1.md; no model
+                  artifact is committed
 ```
 
 ## Known limitations (v0.1 prototype)
@@ -270,10 +275,17 @@ data/, models/    empty placeholders; no real data or model artifact is
   `geographic_ood` instead, per EarlyDesign.md §9.
 - `live_gbif`/`live_ala` occurrence providers are structurally wired but
   deliberately unimplemented: every query returns `provider_not_configured`.
-- No real occurrence or taxonomy data is committed; only the fixture-backed
-  providers under `providers/` and `fixtures/golden/` are used, and the
-  Milestone 1.5 importer's own test fixtures under `tests/fixtures/importer/`
-  are hand-written synthetic rows, not a real dataset extract.
+- The runtime providers used by `demo`/`assess` are still fixture-backed only
+  (`providers/` and `fixtures/golden/`), and the Milestone 1.5 importer's own
+  test fixtures under `tests/fixtures/importer/` remain hand-written
+  synthetic rows. A bounded, real GBIF/ALA occurrence dataset for the TF4
+  genera *is* committed for Milestone 2 preparation, under
+  `data/external/m2/` (see `docs/m2_resource_inventory.md`); it is not wired
+  into the `demo`/`assess` runtime path, and committing it is a
+  repository-storage decision only, not an experiment authorisation. See
+  `docs/data_cards/m2_occurrence_table_v1.md` and
+  `config/geo_experiment.m2.toml` for the M2-A occurrence-table conversion,
+  import, and readiness-run commands built on top of it.
 - The offline importer's name resolution (`import-occurrences` and
   `LocalSnapshotTaxonomyProvider`) is exact-normalized-name matching only -
   no fuzzy matching, no synonym database beyond what the input file itself
@@ -290,3 +302,14 @@ data/, models/    empty placeholders; no real data or model artifact is
   `SpatialBlockStrategy` Protocol exists specifically so an H3, equal-area, or
   state/ecoregion strategy can be substituted later without changing the
   readiness-reporting or CLI code.
+
+## M2-B temporary S1 evaluation input
+
+The authorised M2 readiness gate now accepts a validated, external temporary
+S1 bundle produced from a reproduced TF4 EfficientNet-B2 baseline. It is
+strictly an offline research utility, not an S3 runtime provider and not the
+original paper checkpoint. Its images, weights, prediction outputs, and
+readiness artifacts remain in gitignored `data/local/`; the committed
+provenance, validation logic, and limitations are in
+`docs/model_cards/tf4_visual_baseline_v0.1.md`. The gate being ready does not
+mean the geographic-prior or fusion evaluation has been performed.

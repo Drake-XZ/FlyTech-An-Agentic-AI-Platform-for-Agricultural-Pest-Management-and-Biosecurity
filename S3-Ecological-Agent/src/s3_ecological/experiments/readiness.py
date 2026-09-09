@@ -49,17 +49,22 @@ def evaluate_s1_input(
     *,
     s1_evaluation_input_path: str | None,
     data_nature: DataNature,
+    validated_s1_input: bool = False,
 ) -> tuple[S1InputStatus, list[str]]:
-    """This increment does not implement S1 (DesignSuggestionLog.md "S1
-    boundary"), so a supplied path is never validated here - it can only be
-    reported as unvalidated, or as an engineering fixture when the whole
-    input bundle is declared synthetic."""
+    """Classify a supplied S1 path after the orchestrator has validated it.
+
+    S1 remains external to the S3 runtime boundary. This pure function does
+    no file I/O itself; :mod:`s3_ecological.experiments.prepare` supplies the
+    ``validated_s1_input`` result from the bundle validator.
+    """
     if s1_evaluation_input_path is None:
         return S1InputStatus.MISSING, [REASON_MISSING_AUTHORISED_S1_OUTPUTS]
     if data_nature is DataNature.SYNTHETIC_ENGINEERING_FIXTURE:
         return S1InputStatus.ENGINEERING_FIXTURE_ONLY, [
             REASON_SYNTHETIC_ENGINEERING_FIXTURE_DECLARED
         ]
+    if validated_s1_input:
+        return S1InputStatus.AVAILABLE_AUTHORISED, []
     return S1InputStatus.UNVALIDATED, [REASON_S1_OUTPUTS_SUPPLIED_BUT_NOT_VALIDATED]
 
 

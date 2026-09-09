@@ -888,3 +888,307 @@ zero errors or warnings.
 The current research-validation status therefore remains
 `not_run_missing_authorised_data`. This completion audit does not claim that
 Milestone 2 model training or evaluation has begun or completed.
+
+### 2026-09-08 Australia/Sydney - Suggested next increment: M2-A authorised occurrence preparation and readiness run
+
+**Status:** Proposed implementation increment; not yet an approval to train a
+model or claim biological performance. This entry translates the current
+`EarlyDesign.md` Milestone 2 sequence, the completed readiness tooling, and the
+resource-acquisition entries in `WorkLog.md` into the next bounded unit of
+work.
+
+#### Objective and decision boundary
+
+The next implementation increment should turn the committed, bounded GBIF and
+ALA API JSONL resources into one deterministic, provenance-preserving
+Milestone 1.5 occurrence snapshot, then run the existing offline
+`prepare-geo-experiment` gate against that real-world bundle. Call this
+increment **M2-A**.
+
+M2-A is data preparation and readiness assessment only. It does not reproduce
+or train `geo_prior`, train a fruit-fly model, implement a new geographic-prior
+runtime, calibrate fusion weights or risk thresholds, evaluate biological
+performance, implement S1 or another FlyTech agent, add environmental
+suitability, call a live provider, or add an LLM dependency. A learned model
+must not be trained until the normative `EarlyDesign.md` Milestone 2 gate is
+satisfied.
+
+The owner's earlier permission to commit the bounded data and vendored source
+is repository-storage authorisation only. It must not be inferred to be the
+experiment-authorisation declaration consumed by the readiness schema. A real
+run may use `authorisation.status = "authorised"` only after the owner or an
+authorised supervisor supplies a non-blank `authorisation_reference`,
+`purpose`, and `approving_role` for this experiment.
+
+#### Required implementation order
+
+1. **Define the modelling label contract before conversion.** Record whether
+   the first M2 experiment is genus-level or species-level and require S1 and
+   S3 to use the same stable taxonomy identifiers. The existing four-genus
+   readiness summary does not prove that every species class has enough data.
+   If compatible S1 output is unavailable, complete occurrence-only
+   preparation but retain the required blocked overall status.
+2. **Add a deterministic offline conversion tool.** Add a research/preparation
+   script, recommended name `scripts/prepare_m2_occurrence_table.py`, which
+   reads only the committed `data/external/m2/gbif/*.jsonl` and
+   `data/external/m2/ala/*.jsonl` files and writes an importer-compatible UTF-8
+   Darwin Core CSV or TSV plus a machine-readable conversion report. It must
+   make no network request.
+3. **Normalise without replacing the existing cleaner.** Map provider fields
+   to the Milestone 1.5 importer contract, including source record ID,
+   scientific and accepted names, provider taxonomy ID, rank, coordinates,
+   coordinate uncertainty, event date, basis of record, occurrence licence,
+   media licence where applicable, and captive/cultivated status. Provider and
+   source-record identity must remain recoverable after conversion. Do not add
+   a second ecological-cleaning policy: `clean_occurrences` remains the sole
+   authority for coordinate usability and quality actions.
+4. **Deduplicate transparently.** Remove exact source duplicates by stable
+   provider record identity and identify likely GBIF/ALA cross-provider
+   duplicates using an explicitly versioned comparison key based on resolved
+   taxon, coordinates at stated precision, event date, and specimen/occurrence
+   identity when available. Exact and probable duplicates must be counted
+   separately. Ambiguous probable matches must be reported rather than
+   silently discarded. Input count, emitted count, rejection count, and count
+   by source and target taxon must reconcile.
+5. **Preserve provenance and integrity.** The conversion report must record
+   input relative paths and SHA-256 values, output SHA-256, tool/profile
+   version, fixed configuration, record counts, field-mapping warnings,
+   duplicate decisions, licence summaries, and a timestamp with timezone. A
+   byte-identical input and configuration must produce byte-identical data
+   output; volatile run metadata belongs in the report only if it does not
+   break the documented reproducibility contract.
+6. **Create the Milestone 1.5 bundle through the existing CLI.** Feed the
+   converted table to `python -m s3_ecological.cli import-occurrences` and
+   produce one coherent `occurrences.json`, `taxonomy.json`, and
+   `import-report.json` bundle. Do not hand-author or patch these artifacts
+   after import. Review all row rejections and mapping warnings before
+   proceeding.
+7. **Create an M2-specific readiness configuration.** Base it on
+   `config/geo_experiment.example.toml`, retain schema version `1.1.0`, the four
+   TF4 genera, `data_nature = "real_world_data"`, label-only geographic scope,
+   and the existing uncalibrated spatial defaults: 1.0-degree blocks,
+   train/validation/test ratios 0.60/0.20/0.20, and seed 42. Any change to
+   these values requires an explicit recorded rationale; it must not be
+   presented as calibrated.
+8. **Run the existing readiness gate unchanged.** Use
+   `prepare-geo-experiment` to authenticate the bundle, reuse the existing
+   cleaner, and write `spatial-split-manifest.json` and
+   `readiness-report.json`. Verify that a block appears in exactly one split,
+   all referenced taxonomy IDs resolve, all four target genera are reported,
+   and repeated runs over identical inputs are byte-identical.
+9. **Stop honestly at the gate.** Without an authorised, schema-compatible S1
+   evaluation input, the required overall result remains
+   `not_run_missing_authorised_data` with
+   `missing_authorised_s1_outputs`, even if occurrence data reaches
+   `ready_for_geo_prior_engineering`. Data-quality reason codes must be fixed
+   or explicitly accepted before any later M2 training request. Do not create
+   synthetic S1 probabilities or labels to bypass the gate.
+
+#### S1 input and leakage requirements for the later M2 experiment
+
+Before the gate can report `ready_for_approved_milestone_2_experiment`, the
+project must receive an authorised S1 evaluation file with, at minimum:
+
+- observation or image identity;
+- top-k candidate identities using the agreed stable taxonomy IDs;
+- visual probability or confidence values with documented semantics;
+- candidate-set completeness and omitted-mass semantics where applicable;
+- authorised ground-truth labels for evaluation;
+- S1 model, dataset, and split identity; and
+- enough provenance to prove that evaluation observations were not used to
+  train S1.
+
+All held-out iNaturalist observations must be excluded from both the
+geographic-prior training set and S1 training data. Split membership must be
+joined by stable observation/source identity, not reconstructed later from
+coordinates. The 69 `ND` images must not be transformed for training without
+separate review and authorisation, and `NC` images remain limited to permitted
+non-commercial use. Images are S1/evaluation resources; the first geographic
+prior should use occurrence metadata rather than image pixels.
+
+#### Recommended M2 work after M2-A passes
+
+Only after the readiness gate no longer reports
+`not_run_missing_authorised_data` or `not_ready_data_quality` should the next
+approved increment:
+
+1. reproduce the pinned `geo_prior` paper implementation on its bundled
+   example assets in an isolated, recorded environment;
+2. implement a replaceable `LearnedGeoPriorModel` adapter without changing
+   the existing public S3 request/response contracts;
+3. train the fruit-fly prior on spatial-train records only and use validation
+   blocks for model selection;
+4. reuse the existing documented log-linear soft-fusion path, without silently
+   changing Profile v0.1 weights or risk thresholds; and
+5. evaluate geography-only, S1-only, and S1-plus-geography on the untouched
+   spatial test split, then write a model card, data card, and evaluation
+   report without treating presence-only data as confirmed absence evidence.
+
+The vendored `geo_prior` commit has no explicit upstream licence file and its
+historical pretrained-weight URL is unavailable. Before incorporating its
+code into a distributed or production runtime, obtain an appropriate licence
+decision or implement the published method independently behind the project
+interface. Do not substitute an unverified third-party checkpoint.
+
+#### Required tests and verification
+
+- Unit-test GBIF and ALA field mapping, missing/invalid fields, stable ordering,
+  exact-source deduplication, probable cross-source duplicate reporting,
+  licence retention, and count reconciliation.
+- Test deterministic output and input/output SHA-256 reporting with reordered
+  input fixtures.
+- Add an offline integration test from small GBIF/ALA JSONL fixtures through
+  conversion, `import-occurrences`, and `prepare-geo-experiment`.
+- Prove that the conversion tool performs no network call and does not invoke
+  a model or external agent.
+- Test the expected missing-S1 result exactly, including overall status and
+  reason code.
+- Run the full pytest suite, Ruff, Pyright, schema export, CLI smoke tests, and
+  `git diff --check`.
+
+#### Documentation and definition of done
+
+Update README statements that still say no real data is committed, add a data
+card for the derived M2 occurrence table and bundle, document the exact
+commands and relative paths, and append verified implementation results to
+`WorkLog.md`. Real readiness outputs may contain sensitive spatial information
+and must follow an explicit repository-storage decision rather than being
+committed automatically.
+
+M2-A is complete only when:
+
+- [ ] the label/taxonomy contract is recorded;
+- [ ] deterministic GBIF/ALA conversion and transparent deduplication pass;
+- [ ] the three-file Milestone 1.5 bundle validates with reconciled counts;
+- [ ] a valid, explicit experiment-authorisation declaration is present, or
+  the absence of authorisation is reported without inference;
+- [ ] the readiness artifacts are generated and reproducible;
+- [ ] every spatial block belongs to exactly one split;
+- [ ] missing S1 remains an explicit blocked overall status;
+- [ ] tests and static checks pass;
+- [ ] documentation and `WorkLog.md` are updated; and
+- [ ] no model training, fusion/risk calibration, or biological-performance
+  claim occurs in this increment.
+
+No mathematical formula, decision equation, Profile v0.1 threshold, fusion
+weight, risk-state precedence rule, public schema, provider behavior, or
+runtime interface is proposed to change in M2-A. The conversion cap, duplicate
+comparison precision, and spatial-split settings are data-preparation
+parameters and must be recorded separately from inference or biological
+thresholds.
+
+## 2026-09-08 Australia/Sydney - M2-A implementation report
+
+Implemented against the real, already-committed `data/external/m2/`
+GBIF/ALA files. Full detail, exact commands, and exact statistics are in
+`WorkLog.md` ("2026-09-08 Australia/Sydney - M2-A occurrence preparation
+and readiness run implemented") and in the new
+`docs/data_cards/m2_occurrence_table_v1.md`. This entry only checks off the
+above list against those recorded results; it does not restate the numbers.
+
+M2-A completion checklist, verified:
+
+- [x] the label/taxonomy contract is recorded - TF4 genus scope,
+  species-level names and provider taxon ids preserved, label status
+  `pending_s1_alignment`; the GBIF BOLD-BIN naming caveat (a disclosed data
+  characteristic, not a bug) is documented rather than silently patched.
+- [x] deterministic GBIF/ALA conversion and transparent deduplication pass
+  - real run: 45,707 input -> 45,610 emitted, 14 exact + 83 probable
+  duplicates removed, 0 ambiguous, reconciliation holds exactly; byte-
+  identical output verified across a repeat run and a genus-file-order
+  reversal.
+- [x] the three-file Milestone 1.5 bundle validates with reconciled counts
+  - 45,610 accepted, 0 rejected, 0 mapping warnings, via the unmodified
+  `import-occurrences` CLI only.
+- [x] a valid, explicit experiment-authorisation declaration is present, or
+  the absence of authorisation is reported without inference -
+  `authorisation.status = "unknown"` in `config/geo_experiment.m2.toml`;
+  it was never set to `"authorised"`, and no authorisation reference,
+  purpose, or approving role was fabricated.
+- [x] the readiness artifacts are generated and reproducible - a repeat run
+  produced a byte-identical `spatial-split-manifest.json` and an identical
+  `readiness-report.json` aside from `generated_at`.
+- [x] every spatial block belongs to exactly one split - verified directly
+  against the real manifest's 1,410 distinct blocks.
+- [x] missing S1 remains an explicit blocked overall status -
+  `overall_milestone_2_status = not_run_missing_authorised_data`,
+  `s1_input_status = missing`, reason codes include
+  `missing_authorised_s1_outputs`; CLI exit code `0` (the correct, non-fatal
+  outcome for this honest blocked state).
+- [x] tests and static checks pass - `pytest -q`: 276 passed, 2 skipped
+  (pre-existing, unrelated); `ruff check .`: clean; `pyright`: 0
+  errors/warnings/informations; `scripts/export_json_schemas.py`: 30
+  schemas exported; `git diff --check`: clean (only a pre-existing,
+  unrelated LF/CRLF note on this file itself).
+- [x] documentation and `WorkLog.md` are updated - README.md, both
+  previously-outdated data cards, and `docs/m2_resource_inventory.md`
+  corrected and cross-referenced; new
+  `docs/data_cards/m2_occurrence_table_v1.md` added; `WorkLog.md` appended.
+- [x] no model training, fusion/risk calibration, or biological-performance
+  claim occurs in this increment - none of `research/third_party/geo_prior/`,
+  `soft_fusion` weights, or any risk threshold was touched or run; no S1,
+  S5, or orchestrator module was implemented; no live GBIF/ALA network call
+  or LLM call was made by the new script (proven by a monkeypatched-socket
+  test); no synthetic S1 output was created to bypass the gate.
+
+Restating and confirming: no mathematical formula, decision equation,
+Prototype Implementation Profile v0.1 threshold, fusion weight, risk-state
+precedence rule, public schema, provider behavior, or runtime interface was
+changed by this increment. This was verified directly against the real
+run's `readiness-report.json.effective_cleaning_settings`, which shows
+every Profile v0.1 default unchanged.
+
+Not yet reached, and not fabricated: `ready_for_approved_milestone_2_experiment`
+remains unreached because (1) no formal experiment-authorisation declaration
+(non-blank `authorisation_reference`/`purpose`/`approving_role`) has been
+supplied by the project owner or an authorised supervisor, and (2) no S1
+(visual-identification) module or authorised evaluation output exists in
+this repository yet. Geo-prior model reproduction/training must not begin
+until both are supplied.
+
+## 2026-09-09 Australia/Sydney - M2-B approval and temporary external S1 baseline
+
+**Decision:** approved and implemented. The project owner supplied explicit
+non-commercial authorisation `owner-approval-m2-2026-09-08` for the
+`m2-fruit-fly-occurrences-v1` M2 geographic-prior reproduction, training, and
+spatial-holdout evaluation. The owner also confirmed that resources named in
+the FlyTech introduction may be used in this project. The public TF4 archive
+and the Shen-related Tephritid-Recognition code were therefore eligible as
+research inputs; their third-party licence and redistribution constraints
+remain unchanged.
+
+**Why this route:** the public upstream code has no usable released
+checkpoint, and TF4.zip has empty test folders. Treating any inferred or
+synthetic output as S1 would have defeated the M2 gate. The selected second
+option was an isolated, explicitly labelled reproduction of a four-genus
+EfficientNet-B2 baseline that produces an external, schema-compatible S1
+bundle. It is not incorporated into the S3 runtime boundary and must never
+be called the original Shen et al. model.
+
+**Required method and controls:** train only on TF4 train images using a
+deterministic fold manifest; evaluate only on the locked M2 spatial test
+images; maintain predictions and ground truth in separate artifacts; map
+labels to authorised stable taxonomy IDs; record raw closed-set softmax
+semantics and absence of an unknown class; and validate the bundle before
+readiness. Exclude every M2 image with a TF4 observation-id or SHA-256 match,
+`no_derivatives` media, and dHash near duplicates at distance <=5. Do not
+use spatial-test labels for model selection, training, geographic-prior
+fitting, or fusion calibration.
+
+**Implemented evidence:** 3,409 TF4 training images were used; the locked S1
+test bundle contains 942 iNaturalist observations after excluding 234
+observation-id matches, 7 restricted-media records, and 19 near duplicates.
+The validator checks artifact hashes, split identity, crosswalk, separate
+labels/predictions, closed-softmax semantics, and leakage declarations.
+Readiness now reaches `ready_for_approved_milestone_2_experiment`; this is a
+permission to begin the geographic-prior experiment, not a result claim.
+The full model card and exact commands are recorded in
+`docs/model_cards/tf4_visual_baseline_v0.1.md` and `WorkLog.md`.
+
+**Next required increment (M2-C):** reproduce/train the geographic-prior
+architecture on spatial train only, choose any hyperparameters/calibration on
+spatial validation only, and run one locked spatial-test evaluation using the
+validated temporary S1 bundle. Report S1-only, geographic-only, and fused
+metrics with confidence intervals where feasible; retain the closed-set and
+small-Anastrepha limitations; do not change risk thresholds or claim
+production readiness.

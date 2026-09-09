@@ -17,6 +17,12 @@ records.
   `data/external/m2/inaturalist/image_failures.json`
 - Official `geo_prior` source: `research/third_party/geo_prior/`
 - Reproducible downloader: `scripts/download_m2_resources.py`
+- Offline conversion of these GBIF/ALA files into a Milestone 1.5 occurrence
+  bundle and readiness run: `scripts/prepare_m2_occurrence_table.py` and
+  `config/geo_experiment.m2.toml` - see
+  `docs/data_cards/m2_occurrence_table_v1.md` for methodology, actual
+  counts, and the readiness result obtained (M2-A,
+  DesignSuggestionLog.md "2026-09-08 Australia/Sydney - M2-A")
 
 ## Downloaded resources
 

@@ -20,11 +20,28 @@ Public contract versions for this hardening increment are configuration
 `1.1.0`, `spatial-split-manifest.json` `1.1.0`, and
 `readiness-report.json` `2.0.0`. Unknown versions are rejected.
 
-This is **not** a real dataset, and its outputs are **not** a geographic
-model or an evaluation result. No occurrence or taxonomy data is committed
-to this repository; the only inputs matching the expected bundle shape under
-version control are the small synthetic fixtures in
-`tests/fixtures/importer/` used by the automated tests.
+This data card describes the gate mechanism itself, not a dataset. Running
+it never produces a geographic model or an evaluation result. The
+automated test suite exercises this gate exclusively against the small
+synthetic fixtures in `tests/fixtures/importer/`; no data card in this
+repository claims a passing readiness run establishes biological or
+species-distribution accuracy.
+
+As of the M2-A increment (DesignSuggestionLog.md "2026-09-08 Australia/Sydney
+- M2-A"), a bounded real GBIF/ALA occurrence dataset for the TF4 genera is
+also committed, at `data/external/m2/` (see `docs/m2_resource_inventory.md`).
+It is converted into a Milestone 1.5 bundle and run through this gate using
+`config/geo_experiment.m2.toml`; see
+`docs/data_cards/m2_occurrence_table_v1.md` for the conversion methodology
+and the actual readiness result obtained. That result is
+`not_run_missing_authorised_data` (reason code
+`missing_authorised_s1_outputs`): no S1 (visual-identification) evaluation
+output exists yet, and no formal experiment-authorisation declaration has
+been supplied, so `ready_for_approved_milestone_2_experiment` has not been
+reached. The generated `spatial-split-manifest.json`/`readiness-report.json`
+files for that real run are written under the gitignored `data/local/m2/`
+and are not committed, since they carry real occurrence coordinates - see
+the M2-A design entry's repository-storage-decision requirement.
 
 ## What this tool does NOT do
 
@@ -145,8 +162,7 @@ config always reproduces the same assignment.
 `not_ready_data_quality`, `engineering_fixture_only`,
 `ready_for_approved_milestone_2_experiment`. `s1_input_status` uses:
 `available_authorised`, `missing`, `unvalidated`, `engineering_fixture_only`
-(S1 is not implemented by this tool, so a supplied path is only ever
-recorded, never validated). Precedence for `overall_milestone_2_status`:
+(S1 remains external to the runtime; the orchestrator validates a configured bundle before it may be classified as available). Precedence for `overall_milestone_2_status`:
 an engineering fixture always wins first; otherwise, any missing
 authorisation or non-authorised S1 input forces
 `not_run_missing_authorised_data`; otherwise a data-quality problem forces
@@ -193,3 +209,33 @@ so this gate can prepare data and a spatial split, but it cannot itself
 produce a fusion-evaluation result - `overall_milestone_2_status` can reach
 `ready_for_approved_milestone_2_experiment` only once an authorised S1
 evaluation output also exists.
+
+## 2026-09-09 update — authorised temporary S1 bundle validated
+
+The M2-A statement above was the correct state before owner authorisation and
+an S1 bundle existed. The project owner subsequently supplied explicit
+non-commercial M2 authorisation (`owner-approval-m2-2026-09-08`; project
+owner; purpose recorded in `config/geo_experiment.m2.toml`).
+
+A temporary external S1 input was then produced by an isolated reproduction
+of the public TF4 visual baseline. It is deliberately not an S3 runtime
+component and not claimed to be the original Shen et al. checkpoint. The
+configured `data/local/m2/s1/outputs/fold-0/s1_bundle_manifest.json` was
+validated before readiness accepted it: separate prediction and label
+artifacts are hash-checked; stable genus candidate IDs and spatial-test
+identity are checked; raw closed-set four-genus softmax semantics are stated;
+and the preparation report proves zero TF4 observation/SHA overlap, no
+`no_derivatives` images, and a dHash near-duplicate exclusion threshold of 5.
+
+With the real 45,610-record occurrence bundle and this validated S1 input,
+the 2026-09-09 run reported:
+
+- `occurrence_data_status`: `ready_for_geo_prior_engineering`
+- `s1_input_status`: `available_authorised`
+- `overall_milestone_2_status`: `ready_for_approved_milestone_2_experiment`
+- remaining disclosure: `geographic_scope_not_enforced` (the configured
+  global scope is label-only, not a geographic restriction).
+
+This is a readiness gate, not a completed geo-prior or fusion result. See
+`docs/model_cards/tf4_visual_baseline_v0.1.md` and `WorkLog.md` for the
+baseline's method, test composition, and limitations.

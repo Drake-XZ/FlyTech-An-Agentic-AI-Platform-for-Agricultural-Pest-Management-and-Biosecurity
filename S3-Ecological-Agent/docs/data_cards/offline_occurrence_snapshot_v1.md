@@ -9,10 +9,19 @@ written together into one output directory -
 `local_snapshot` providers (`providers/occurrence_local_snapshot.py`,
 `providers/taxonomy_local_snapshot.py`) that read them back for `assess`.
 
-This is **not** a real dataset. No occurrence or taxonomy data is committed
-to this repository; this document describes a *format*, and the only files
-matching it under version control are the small synthetic fixtures in
-`tests/fixtures/importer/` used by the automated tests.
+This document describes a *format*, not a dataset. The automated test suite
+exercises the importer exclusively against the small synthetic fixtures in
+`tests/fixtures/importer/`.
+
+As of the M2-A increment (DesignSuggestionLog.md "2026-09-08 Australia/Sydney
+- M2-A"), a bounded real GBIF/ALA occurrence dataset for the TF4 genera is
+committed under `data/external/m2/` (see `docs/m2_resource_inventory.md`)
+and is converted into a bundle matching this exact format via
+`scripts/prepare_m2_occurrence_table.py` plus `import-occurrences`; see
+`docs/data_cards/m2_occurrence_table_v1.md` for that conversion's
+methodology, licensing, and provenance. The resulting bundle files are
+written to the gitignored `data/local/m2/bundle/` and are not committed to
+the repository.
 
 ## Inputs accepted
 

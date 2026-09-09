@@ -1806,3 +1806,272 @@ Verify that no staged blob exceeds the remote's per-file size limit, that no
 nested `.git` metadata is committed, that the image index still matches the
 committed image set, and that pytest, Ruff, Pyright, and `git diff --check`
 remain clean. Record the executed results in the commit/push report.
+
+## 2026-09-08 Australia/Sydney - M2-A occurrence preparation and readiness run implemented
+
+Implements the increment proposed in DesignSuggestionLog.md "2026-09-08
+Australia/Sydney - Suggested next increment: M2-A authorised occurrence
+preparation and readiness run", against the real, already-committed
+`data/external/m2/gbif/*.jsonl` and `data/external/m2/ala/*.jsonl` files.
+Data preparation and readiness assessment only: no model was trained, no
+fusion weight or risk threshold was calibrated, no S1 or other agent was
+implemented, and no synthetic S1 output was fabricated to bypass the
+readiness gate.
+
+### Implementation order followed
+
+1. Recorded the taxonomy/label contract (TF4 genus scope, species-level
+   names and provider taxonomy ids preserved, `pending_s1_alignment` label
+   status) in the new M2 occurrence-table data card rather than inventing
+   an S1 crosswalk that does not exist yet.
+2. Added `scripts/prepare_m2_occurrence_table.py`: a deterministic, offline
+   conversion tool that reads only the committed GBIF/ALA JSONL files
+   line-by-line, makes no network/model/LLM call, and writes an
+   importer-compatible `generic_dwc` CSV plus a machine-readable JSON
+   conversion report.
+3. Mapped provider fields without reimplementing cleaning -
+   `s3_ecological.occurrence.cleaning.clean_occurrences` was not touched and
+   remains the sole authority for coordinate-quality/usability decisions.
+   Because the Milestone 1.5 importer namespaces `taxon_id` but not
+   `source_record_id`, and tags every `generic_dwc` row's `source` field
+   uniformly regardless of true provider, the script itself embeds
+   `gbif:`/`ala:` prefixes into the emitted `occurrenceID`/`taxonID` cells so
+   provider identity remains recoverable.
+4. Implemented three-tier, versioned deduplication (`m2-dedup-v0.1`): exact
+   same-provider identity, probable cross-provider (shared iNaturalist
+   observation id, or matching name+coordinate-bucket+event-date), and
+   ambiguous cross-provider matches - the last tier is reported, never
+   silently dropped.
+5. Recorded full provenance in the conversion report: per-input-file
+   SHA-256 (streamed), output SHA-256, tool/profile/dedup version strings,
+   fixed configuration, per-provider/per-target-taxon counts, licence
+   summary, field-mapping warnings, and a full duplicate-decision list.
+   Verified byte-identical CSV output and identical report counts (aside
+   from `generated_at` and the run's own output paths) across a repeat run
+   and across a genus-file-order-reversed run.
+6. Built the Milestone 1.5 bundle exclusively through the existing,
+   unmodified `import-occurrences` CLI - never hand-authored or patched
+   afterward.
+7. Added `config/geo_experiment.m2.toml`, an M2-specific
+   `prepare-geo-experiment` configuration derived from
+   `config/geo_experiment.example.toml`: schema `1.1.0`, TF4 target taxa,
+   `data_nature = "real_world_data"`, `geographic_scope_mode = "label_only"`,
+   and the existing, unmodified Profile v0.1 spatial-split defaults
+   (`latitude_longitude_grid_v0.1`, `grid_size_degrees = 1.0`, ratios
+   0.60/0.20/0.20, `seed = 42`). `authorisation.status` is left at its
+   honest default, `"unknown"` - it was not set to `"authorised"`, since no
+   `authorisation_reference`/`purpose`/`approving_role` has been supplied by
+   the owner or an authorised supervisor (the schema's own validator would
+   reject `"authorised"` without them regardless).
+8. Ran the existing, unmodified `prepare-geo-experiment` gate against the
+   real bundle. Verified every spatial block is assigned to exactly one
+   split, all four TF4 genera are represented, and a repeat run produces a
+   byte-identical `spatial-split-manifest.json` and (aside from
+   `generated_at`) an identical `readiness-report.json`.
+9. Stopped honestly at the gate: no S1 evaluation input exists, so
+   `overall_milestone_2_status` correctly remains
+   `not_run_missing_authorised_data` with reason code
+   `missing_authorised_s1_outputs`, even though the occurrence data itself
+   reconciles cleanly. No synthetic S1 probabilities or labels were created.
+
+### Actual results (real committed data, 2026-09-08 run)
+
+Conversion (`scripts/prepare_m2_occurrence_table.py`): 45,707 input records
+(39,689 GBIF + 6,018 ALA) -> 45,610 emitted (14 exact same-provider
+duplicates removed, 83 probable cross-provider duplicates removed, 0
+ambiguous matches this run); reconciliation holds exactly
+(45,707 = 45,610 + 14 + 83). 0 unparseable input lines. 0 field-mapping
+warnings. By target genus (of 45,610 emitted): Anastrepha 8,321, Bactrocera
+13,606, Ceratitis 10,299, Rhagoletis 9,624, and 3,760 records whose name is
+a GBIF BOLD BIN identifier rather than a binomial (confirmed via each such
+record's own `genus` Darwin Core field to be genuinely Anastrepha/
+Bactrocera/Ceratitis/Rhagoletis, but not recognised as such by the
+downstream first-token-of-name genus heuristic - documented as a disclosed
+label-contract limitation in `docs/data_cards/m2_occurrence_table_v1.md`,
+not something this script alters or fabricates a name to work around).
+
+Milestone 1.5 bundle (`import-occurrences --source generic_dwc`):
+`input_record_count = accepted_record_count = 45,610`,
+`rejected_record_count = 0`, 0 mapping warnings, 893 distinct namespaced
+taxon ids.
+
+Readiness gate (`prepare-geo-experiment` against
+`config/geo_experiment.m2.toml`): `overall_milestone_2_status =
+not_run_missing_authorised_data`, `s1_input_status = missing`,
+`reason_codes = [authorisation_unknown, missing_authorised_s1_outputs,
+geographic_scope_not_enforced]`, `missing_target_taxa = []` (all four TF4
+genera present). Post-cleaning: `usable_record_count = 18,709`,
+`excluded_record_count = 23,141` (of which 22,298 is
+`excluded_unknown_coordinate_uncertainty` - most committed GBIF/ALA records
+do not report `coordinateUncertaintyInMeters`, and the existing, unmodified
+cleaner conservatively treats a missing value as unusable for distance
+computation; this is pre-existing cleaner behaviour, not something this
+increment changed). `counts_by_split`: train 11,436, validation 3,242, test
+4,031, across 1,410 distinct spatial blocks, each assigned to exactly one
+split (verified directly against `spatial-split-manifest.json`). CLI exit
+code `0`.
+
+### S1 and authorisation blockers
+
+Two things remain missing, and neither was fabricated to make progress:
+
+- No formal experiment-authorisation declaration. The owner's prior
+  permission to commit the bounded data/vendored source
+  (`docs/m2_resource_inventory.md`) is repository-storage authorisation
+  only, not the separate declaration `AuthorisationDeclaration` requires
+  (non-blank `authorisation_reference`/`purpose`/`approving_role`).
+- No S1 (visual-identification) module or evaluation output exists in this
+  repository yet.
+
+Until both are supplied, `ready_for_approved_milestone_2_experiment` cannot
+be reached, and geo-prior model training/reproduction must not begin.
+
+### Tests and static checks
+
+- Added `tests/unit/test_prepare_m2_occurrence_table.py` (24 tests): GBIF
+  and ALA field mapping (including the epoch-millisecond and pre-1970
+  `eventDate` cases), missing/invalid-field passthrough (no self-originated
+  row rejection beyond unparseable JSON lines), deterministic output under
+  reordered input lines and reordered genus files, exact/probable/ambiguous
+  deduplication (each tier individually, plus a mixed-outcome
+  reconciliation case), input/output SHA-256 reporting, unparseable-line
+  counting, a missing-input fatal error that writes no output, a
+  no-network-call proof (monkeypatched `socket.socket`/`create_connection`
+  plus a static import-token check), and the script's own CLI entry point.
+- Added `tests/integration/test_m2_occurrence_pipeline.py` (2 tests): a
+  fully offline, synthetic-fixture run through
+  conversion -> `import-occurrences` -> `prepare-geo-experiment`, asserting
+  the exact expected blocked status/reason code (never reaching
+  `ready_for_approved_milestone_2_experiment` and never a data-quality exit
+  code), every spatial block in exactly one split, and byte-identical
+  conversion output across repeated runs.
+- `python -m pytest -q`: 276 passed, 2 skipped (pre-existing, unrelated
+  `pydantic_ai` optional-dependency skips), 0 failed.
+- `python -m ruff check .`: all checks passed (after fixing one
+  line-length violation this increment introduced).
+- `python -m pyright`: 0 errors, 0 warnings, 0 informations.
+- `python scripts/export_json_schemas.py`: all 30 schemas exported
+  successfully; no new Pydantic schema model was added by this increment.
+- `git diff --check`: no whitespace errors introduced by this increment
+  (the only pre-existing warning, an LF/CRLF note on `DesignSuggestionLog.md`,
+  predates this session).
+
+### Files added or changed
+
+- Added `scripts/prepare_m2_occurrence_table.py`.
+- Added `config/geo_experiment.m2.toml`.
+- Added `tests/unit/test_prepare_m2_occurrence_table.py` and
+  `tests/integration/test_m2_occurrence_pipeline.py`.
+- Added `docs/data_cards/m2_occurrence_table_v1.md`.
+- Updated `docs/m2_resource_inventory.md` and
+  `docs/data_cards/offline_occurrence_snapshot_v1.md` and
+  `docs/data_cards/geo_experiment_readiness_v0.1.md` to cross-reference the
+  new data card and correct now-outdated "no real occurrence data is
+  committed" statements written before the M2 resource snapshot existed.
+- Updated `README.md`'s repository-layout and known-limitations sections
+  for the same reason.
+- Updated `.gitignore` to add `data/local/`, a scratch location for real
+  (non-fixture) M2 conversion/bundle/readiness outputs that must follow an
+  explicit repository-storage decision before ever being committed - none
+  has been made, so `data/local/m2/**` (the actual outputs from the run
+  above) is not committed. `config/geo_experiment.m2.toml` itself is
+  committed; it contains only paths, ratios, and target-taxa lists, no
+  occurrence data.
+
+### Mathematical-formula and parameter impact
+
+No S3 mathematical formula, decision equation, Prototype Implementation
+Profile v0.1 threshold, fusion weight, risk-state precedence rule, public
+schema, provider behaviour, or runtime interface changed. `clean_occurrences`,
+`assign_records_to_splits`, `prepare_geo_experiment`, `readiness.py`, the
+CLI, and every Profile v0.1 numeric default were used entirely unmodified.
+The conversion cap (all committed records processed; no additional
+sub-sampling applied by this script), the 3-decimal-degree duplicate
+comparison precision, and the spatial-split settings are data-preparation
+parameters, recorded here and in the new data card separately from any
+inference or biological threshold - none of them were presented as
+calibrated, and no biological-performance claim is made anywhere in this
+increment's outputs.
+
+### Next step gated on missing inputs
+
+Geo-prior model reproduction/training must not begin. It requires, at
+minimum: (1) an explicit experiment-authorisation declaration from the
+owner/an authorised supervisor (non-blank `authorisation_reference`/
+`purpose`/`approving_role`), and (2) an authorised, schema-compatible S1
+evaluation input (observation/image identity, top-k candidate identities on
+agreed stable taxonomy ids, visual probability/confidence with documented
+semantics, authorised ground-truth labels, S1 model/dataset/split identity,
+and provenance proving evaluation observations were not used to train S1).
+Neither exists yet; this increment does not simulate or approximate either.
+
+## 2026-09-09 Australia/Sydney - M2-B temporary TF4 S1 baseline and validated readiness
+
+### Authority and scope
+
+The project owner supplied `owner-approval-m2-2026-09-08` for non-commercial
+M2 geographic-prior reproduction, training, and spatial-holdout evaluation,
+and confirmed that introduction-listed resources are project-eligible. The
+approval fields are now explicit in `config/geo_experiment.m2.toml`. This
+records project authority only; it does not change source licences or permit
+redistribution.
+
+### External S1 implementation
+
+The introduction-linked public TF4 resource was used to reproduce, not claim
+to recover, a visual baseline: `flytech-reproduced-tf4-efficientnet-b2-v0.1`.
+The upstream public repository commit is
+`99b0198e711d68fbc64214865183b23ea374c042`; it has no usable original
+checkpoint. TF4.zip SHA-256 is
+`52d0705e07298c2df25739f60483a43032a3891de9042c1703daa7d610563cdf`,
+310,009,167 bytes, and supplies 3,409 train images across four genera.
+
+An ImageNet-initialised EfficientNet-B2 was trained in an isolated local
+research environment using deterministic fold 0, 260x260 preprocessing,
+flip/colour-jitter augmentation, AdamW (1e-4), class-weighted cross entropy,
+and early stopping. The selected epoch-14 checkpoint SHA-256 is
+`b1c3c04f3748e2ab18a9966019f928e02c10b8865698215bcfad943dd4681e89`.
+Internal TF4 validation was 93.00% accuracy / 93.01% macro-F1; this is not an
+M2 spatial result.
+
+### Locked S1 evaluation and leakage controls
+
+The spatial-test S1 bundle contains 942 one-image-per-iNaturalist-observation
+records (Anastrepha 31, Bactrocera 165, Ceratitis 371, Rhagoletis 375). Before
+creation, 234 TF4 observation-id matches, 7 `no_derivatives` media rows, and
+19 dHash near-duplicates (distance <=5) were excluded. The final bundle
+reports zero TF4 training-observation overlap and zero SHA-256 overlap.
+Date-only source values leave `observed_at` absent rather than inventing a
+midnight time.
+
+Its S1-only diagnostic is 89.92% accuracy / 79.27% macro-F1: Anastrepha F1
+46.15%, Bactrocera 84.53%, Ceratitis 93.70%, Rhagoletis 92.71%. It is a
+closed four-genus raw-softmax classifier with no unknown class, so these are
+temporary diagnostic figures only, not final biological claims.
+
+`src/s3_ecological/experiments/s1_bundle.py` validates hash-bound separate
+prediction/ground-truth artifacts, authorised candidate crosswalk, spatial
+split identity, raw closed-softmax declarations, leakage controls, and
+one-image-per-observation scope. `prepare-geo-experiment` invokes it before
+classifying S1 as available.
+
+### Verification and readiness
+
+- `python -m pytest -q`: 279 passed, 2 skipped.
+- The actual authorised run of `prepare-geo-experiment` reports
+  `ready_for_geo_prior_engineering` occurrence data,
+  `available_authorised` S1 input, and
+  `ready_for_approved_milestone_2_experiment` overall.
+- The only remaining readiness disclosure is
+  `geographic_scope_not_enforced`, because global scope is label-only.
+- Real archives, images, local venv, checkpoint, labels, predictions, and
+  readiness artifacts stay under gitignored `data/local/`; no such artifact
+  is committed.
+
+### Next step
+
+M2-C may now begin: fit/reproduce the geographic-prior model using spatial
+train only, select settings on validation only, then perform one locked test
+run with the validated bundle. Keep S1 external, preserve the leakage audit,
+report S1-only / geographic-only / fused outcomes separately, and do not
+calibrate fusion or risk thresholds from the test set.
