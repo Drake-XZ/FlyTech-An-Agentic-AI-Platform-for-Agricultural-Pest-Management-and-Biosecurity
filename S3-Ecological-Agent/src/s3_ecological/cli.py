@@ -20,6 +20,10 @@ Four subcommands:
   bundle. This is a pre-Milestone 2 preparation gate (EarlyDesign.md
   section 11.4 and 22) - it never trains a model, calibrates a fusion
   weight or risk threshold, or implements S1.
+- ``serve-demo``: runs the local, offline research-visualization demo
+  server (``s3_ecological.api``). Requires the optional ``api``/``demo-ml``
+  extras; both are imported lazily inside this subcommand's handler only,
+  so no other subcommand gains a new dependency.
 
 All subcommands are offline: no network access and no LLM call is made.
 ``analysis_id``/``generated_at`` are generated here, at the process
@@ -68,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_import_occurrences(args)
     if args.command == "prepare-geo-experiment":
         return _run_prepare_geo_experiment(args)
+    if args.command == "serve-demo":
+        return _run_serve_demo(args.host, args.port)
 
     parser.print_help()
     return 1
@@ -149,6 +155,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="replace an existing spatial-split-manifest.json/readiness-report.json",
     )
+
+    serve_demo_parser = subparsers.add_parser(
+        "serve-demo",
+        help=(
+            "run the local, offline research-visualization demo server "
+            "(requires the 'api' and 'demo-ml' extras)"
+        ),
+    )
+    serve_demo_parser.add_argument("--host", default="127.0.0.1")
+    serve_demo_parser.add_argument("--port", type=int, default=8000)
 
     return parser
 
@@ -238,6 +254,23 @@ def _run_prepare_geo_experiment(args: argparse.Namespace) -> int:
     print(json.dumps(report.model_dump(mode="json"), indent=2))
     if _DATA_QUALITY_REASON_CODES.intersection(report.reason_codes):
         return 2
+    return 0
+
+
+def _run_serve_demo(host: str, port: int) -> int:
+    try:
+        import uvicorn
+
+        from s3_ecological.api.app import create_app
+    except ImportError:
+        print(
+            "serve-demo: install the 'api' and 'demo-ml' extras first, e.g. "
+            "pip install -e \".[api,demo-ml]\"",
+            file=sys.stderr,
+        )
+        return 1
+
+    uvicorn.run(create_app(), host=host, port=port)
     return 0
 
 

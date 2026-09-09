@@ -1419,3 +1419,151 @@ do not manufacture unknown taxa, regulatory outcomes, or calibration labels.
 - [ ] Aggregate and per-genus robustness results include support and uncertainty/range; all runs are retained.
 - [ ] Any temporal experiment is truly non-overlapping and separately labelled; unsupported OOD/calibration/regulatory metrics remain explicitly open.
 - [ ] Tests, static checks, reports, and WorkLog pass/update; real generated artifacts remain local and `.gitignore` is not committed.
+
+## 2026-09-09 Australia/Sydney - M2-D implementation report
+
+Implemented against the real, already-committed M2 occurrence snapshot, the
+frozen M2-C configuration/checkpoint/report (read-only), and freshly trained
+per-partition geo-prior checkpoints and S1 bundles. Full detail, exact
+commands, and exact statistics are in `WorkLog.md` ("2026-09-09
+Australia/Sydney - M2-D geographic-prior robustness, ablation, and
+generalisation audit") and `docs/m2d_robustness_report.md`. This entry only
+checks off the above completion criteria against those recorded results; it
+does not restate the numbers.
+
+M2-D completion criteria, verified:
+
+- [x] M2-C's locked primary result is preserved unchanged and
+  hash-referenced - `src/s3_ecological/experiments/m2c_reference.py` pins
+  the report/checkpoint/split-identity/S1-bundle hashes and the three
+  locked-test values; `tests/unit/test_m2c_reference.py` fails the whole
+  suite if `docs/m2c_evaluation_report.md` is ever edited. No M2-C artifact
+  under `data/local/m2/geo_prior/` or `data/local/m2/s1/` was rerun or
+  overwritten.
+- [x] the full split/ablation matrix was declared before the corresponding
+  test inference - `config/m2d_robustness_matrix.json` (five partitions:
+  grid sizes {0.5, 1.0, 2.0}, seeds {7, 42, 123}, plus the
+  `reference_location_only` ablation spec) and
+  `tests/unit/test_m2d_matrix.py` were written and passing before any new
+  training or evaluation command ran.
+- [x] every run has split identity, source hashes, seed, grid size,
+  train-only checkpoint, and S1-bundle validation evidence - each of the
+  four new partitions has its own `spatial_split_identity` (recomputed and
+  pairwise-distinct, asserted by `test_m2d_matrix.py`), its own
+  independently trained checkpoint (four distinct SHA-256 values, none
+  equal to M2-C's own), and its own S1 bundle whose declared split identity
+  was structurally validated against that partition and rejected for any
+  other (`tests/unit/test_s1_bundle.py`'s new cross-partition case).
+- [x] S1-only, geo-only, and unchanged fixed-fusion outcomes are reported
+  for each feasible run - all five partitions (four new plus the frozen
+  reference) report all three methods, using the same unmodified fusion
+  formula and Profile v0.1 constants as M2-C.
+- [x] date-aware versus location-only ablation and date-missing fallback
+  are reported without tuning fusion or thresholds - the reference
+  partition's frozen `filts256_dateTrue` was compared against M2-C's own
+  already-trained `filts256_dateFalse` candidate (reused read-only, not
+  retrained); the comparison is reported as directional (non-identical
+  Geo-only observation counts) rather than a new selection. Date-missing
+  fallback (visual-only fusion, never a fabricated date) was quantified for
+  every partition and is covered by a new integration-test case.
+- [x] aggregate and per-genus robustness results include support and
+  uncertainty/range; all runs are retained - `docs/m2d_robustness_report.md`
+  reports every one of the five runs (no partition dropped or
+  cherry-picked), with per-genus F1/support, fixed-seed bootstrap 95% CIs,
+  and an explicit cross-partition range/mean table separating what is
+  stable (fusion beats both single-source methods everywhere) from what is
+  not (Geo-only's own accuracy varies 81.86%-91.50% across partitions).
+- [x] any temporal experiment is truly non-overlapping and separately
+  labelled; unsupported OOD/calibration/regulatory metrics remain
+  explicitly open - no temporal holdout was attempted this increment (not
+  required by the matrix); `docs/m2d_robustness_report.md` and
+  `config/m2d_robustness_matrix.json` both explicitly list OOD, calibration,
+  incursion, false-alert, and biosecurity-efficacy conclusions as
+  unsupported and not drawn.
+- [x] tests, static checks, reports, and WorkLog pass/update; real
+  generated artifacts remain local and `.gitignore` is not committed -
+  `pytest -q`: 321 passed, 2 skipped (same pre-existing, unrelated skips as
+  M2-C); `ruff check .`: clean; `pyright`: 0 errors/warnings/informations;
+  `git diff --check`: clean; the torch-gated tests additionally passed for
+  real under `data/local/m2/s1/venv/Scripts/python.exe -m pytest
+  tests/integration/test_geo_prior_training.py
+  tests/integration/test_evaluate_geo_prior_labels.py -q` (6 passed); all
+  real training outputs, S1 bundles, and evaluation reports for the four
+  new partitions and the ablation live under gitignored
+  `data/local/m2/m2d/`; `.gitignore` was not committed.
+
+Not fabricated: every per-partition and ablation number in
+`docs/m2d_robustness_report.md` is the real, single output of
+`scripts/evaluate_geo_prior_m2c.py` run once per partition against that
+partition's real independently trained checkpoint and real validated S1
+bundle; no run was repeated, cherry-picked, or adjusted after being
+produced, and the one real bug found during execution (a wrong nested
+`selected_configuration.json` path assumption) is recorded in `WorkLog.md`
+rather than silently corrected.
+
+### 2026-09-09 Australia/Sydney - Implemented: local research-demo visualization (image + geo upload)
+
+**Status:** Owner-requested implementation, completed this entry. This adds
+the project's first-ever UI/HTTP surface, in the location
+`src/s3_ecological/api/` already anticipated by that package's own docstring
+and by the previously unused `api` extra in `pyproject.toml`. It is purely
+additive: no schema, fusion formula, risk threshold, provider Protocol, or
+M2-C/M2-D frozen artifact was read for modification or changed. Full
+implementation detail, files, bugs found and fixed, and exact verification
+output are in `WorkLog.md` ("2026-09-09 Australia/Sydney - Local research-
+demo visualization (image + geo upload)"). This entry records only scope,
+boundaries, and completion status.
+
+#### Scope confirmation
+
+**This is a local research demo only** - explicitly not a production
+system, not a quarantine/inspection decision tool, and not a biosecurity
+decision system. It lets a user upload one image plus a location (and
+optionally a date and free-text environmental notes) and see: the closed-
+set four-genus visual probability from the existing temporary TF4
+EfficientNet-B2 checkpoint, the existing S3 geographic-prior score where
+available, the existing fixed-fusion rerank score (explicitly labelled a
+within-set ranking score, not a posterior), and the existing risk/review
+state - all produced by calling `run_assessment()` unmodified with the same
+providers, settings, and risk policy `cli.py`'s `assess` command already
+uses.
+
+By default it calls no external API, LLM, online map service, GBIF, or ALA
+service; environmental fields the user types are echoed back as context
+only and are never fed into any model. No image, coordinate, prediction, or
+checkpoint is committed to git; uploaded bytes are held in memory only for
+one request and never written to disk.
+
+#### Definition of done
+
+- [x] Image upload (PNG/JPEG/WebP, in-memory only, never persisted) plus
+  required lat/lon and optional date/environmental fields.
+- [x] Visual inference uses the real local TF4 checkpoint unmodified; geo
+  support uses an independent re-implementation of the frozen M2-C FCNet
+  architecture, implementing the existing `GeoPriorModel` Protocol.
+- [x] Fusion/risk/reranking is produced only by calling the existing
+  `run_assessment()`; no new scoring, fusion, or risk logic was written.
+- [x] Missing location, missing date, and missing/unavailable checkpoints
+  all degrade safely (`missing_evidence`, `review_required`,
+  `geo_support=None`) - never a fabricated substitute value.
+- [x] Results page shows summary framing, per-genus comparison, a plain-
+  language explanation built only from real result fields (fixed sentence
+  in place of an unimplemented Grad-CAM), and a collapsible evidence/
+  limitations panel with model versions and the fixed limitations list.
+- [x] No red/green verdict, no inferred location beyond entered
+  coordinates, no online map service, no external API/LLM/GBIF/ALA call.
+- [x] `pytest -q`: 354 passed, 5 skipped; `ruff check .`: all checks
+  passed; `pyright`: 0 errors/warnings/informations; `git diff --check`:
+  clean.
+- [x] README, WorkLog.md, and this log are updated.
+- [x] No uploaded image, real coordinate, prediction, or model checkpoint
+  is committed.
+
+#### Consistency with existing design
+
+This does not supersede or reopen M2-C/M2-D; it is a display layer over
+their already-frozen, already-approved outputs plus the already-existing
+S3 deterministic core. No item in `EarlyDesign.md`'s Milestone 2 research-
+validation checklist is newly claimed satisfied by this work, and no
+biological-performance, incursion-confirmation, or biosecurity-efficacy
+claim is made anywhere in the new UI, API responses, or this entry.

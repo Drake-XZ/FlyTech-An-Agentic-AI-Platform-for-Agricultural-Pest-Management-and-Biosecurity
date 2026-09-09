@@ -1,0 +1,57 @@
+# M2-D robustness partition: grid 0.5 degrees, seed 42
+# (DesignSuggestionLog.md "M2-D robustness, ablation, and generalisation
+# audit"; config/m2d_robustness_matrix.json partition_id "grid0_5_seed42").
+#
+# Copy of config/geo_experiment.m2.toml with only experiment_id,
+# grid_size_degrees, and s1_evaluation_input_path changed - same underlying
+# authorised occurrence/taxonomy snapshot, same authorisation reference, same
+# target taxa and geographic scope. This is a new pre-declared spatial
+# partition of the same M2-C occurrence data, not new data collection and not
+# a re-tuned split. See config/m2d_robustness_matrix.json for the full
+# pre-declared matrix and reproduction command template.
+#
+# Reproduce from repo root:
+#
+#   python -m s3_ecological.cli prepare-geo-experiment \
+#     --config config/geo_experiment.m2d.grid0_5_seed42.toml \
+#     --output-dir data/local/m2/m2d/grid0_5_seed42/readiness --overwrite
+#
+# `data/local/` is gitignored - no real bundle or readiness output files this
+# config produces are committed to the repository.
+
+schema_version = "1.1.0"
+experiment_id = "m2d-fruit-fly-occurrences-v1-readiness-grid0_5_seed42"
+
+generated_at = 2026-09-09T00:00:00+10:00
+
+occurrence_snapshot_path = "data/local/m2/bundle/occurrences.json"
+taxonomy_snapshot_path = "data/local/m2/bundle/taxonomy.json"
+import_report_path = "data/local/m2/bundle/import-report.json"
+
+target_taxa = ["Anastrepha", "Bactrocera", "Ceratitis", "Rhagoletis"]
+
+geographic_scope = "global"
+geographic_scope_mode = "label_only"
+
+data_nature = "real_world_data"
+
+# Filled in with this partition's own S1 bundle only after
+# scripts/generate_tf4_s1_outputs.py has produced it - never M2-C's fold-0
+# bundle, which belongs to a different spatial partition.
+s1_evaluation_input_path = "data/local/m2/m2d/grid0_5_seed42/s1/outputs/s1_bundle_manifest.json"
+
+[authorisation]
+status = "authorised"
+authorisation_reference = "owner-approval-m2-2026-09-08"
+purpose = "FlyTech S3 Milestone 2-D fruit-fly geographic-prior robustness, ablation, and generalisation audit"
+approving_role = "project owner"
+
+[spatial_split]
+block_strategy = "latitude_longitude_grid_v0.1"
+grid_size_degrees = 0.5
+train_ratio = 0.60
+validation_ratio = 0.20
+test_ratio = 0.20
+seed = 42
+
+[settings_overrides]

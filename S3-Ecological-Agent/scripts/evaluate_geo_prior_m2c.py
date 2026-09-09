@@ -290,13 +290,24 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         )
         fusion_predicted.append(winner_index)
 
-    report = {
-        "schema_version": "1.0.0",
-        "purpose": "M2-C locked spatial-test evaluation: S1-only, geographic-only, fixed-fusion",
-        "identity": (
+    report_label = getattr(args, "report_label", None) or "M2-C"
+    if report_label == "M2-C":
+        purpose = "M2-C locked spatial-test evaluation: S1-only, geographic-only, fixed-fusion"
+        identity = (
             "Experimental FlyTech S3 Milestone 2-C result; not a production readiness or "
             "biosecurity/biological-efficacy claim"
-        ),
+        )
+    else:
+        purpose = f"{report_label} spatial-test evaluation: S1-only, geographic-only, fixed-fusion"
+        identity = (
+            f"Experimental FlyTech S3 {report_label} result; not a production readiness or "
+            "biosecurity/biological-efficacy claim"
+        )
+
+    report = {
+        "schema_version": "1.0.0",
+        "purpose": purpose,
+        "identity": identity,
         "created_at": datetime.now(UTC).isoformat(),
         "authorisation_reference": AUTHORISATION_REFERENCE,
         "spatial_split_identity": manifest.split_identity,
@@ -330,9 +341,10 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "production readiness or biosecurity/biological-efficacy claim.",
         ],
     }
+    report_filename = getattr(args, "report_filename", None) or "m2c_locked_test_report.json"
     output_path = args.output_dir
     output_path.mkdir(parents=True, exist_ok=True)
-    report_path = output_path / "m2c_locked_test_report.json"
+    report_path = output_path / report_filename
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"report": str(report_path)}, sort_keys=True))
     return report
@@ -357,6 +369,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir", type=Path, default=Path("data/local/m2/geo_prior/evaluation")
+    )
+    parser.add_argument(
+        "--report-label",
+        type=str,
+        default="M2-C",
+        help=(
+            "Label used in the report's purpose/identity text (e.g. 'M2-D (grid0_5_seed42)'). "
+            "Defaults to 'M2-C', which keeps the report text byte-identical to the original "
+            "M2-C locked spatial-test evaluation."
+        ),
+    )
+    parser.add_argument(
+        "--report-filename",
+        type=str,
+        default="m2c_locked_test_report.json",
+        help="Output report filename within --output-dir.",
     )
     return parser.parse_args()
 

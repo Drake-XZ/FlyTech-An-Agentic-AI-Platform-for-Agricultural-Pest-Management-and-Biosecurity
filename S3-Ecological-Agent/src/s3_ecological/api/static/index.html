@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>S3 Ecological Reasoning - Local Research Demo</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="banner">
+    <strong>Local research demo.</strong>
+    Not a production system. Not a quarantine/inspection decision tool. Not a
+    biosecurity decision system. The visual model recognizes exactly four
+    genera in a closed-set softmax and has no unknown-class detection.
+    Nothing you upload or enter is stored, and no external API, LLM, or map
+    service is called.
+  </header>
+
+  <main>
+    <h1>Fruit-fly image + location -&gt; ecological reasoning demo</h1>
+
+    <form id="assess-form">
+      <fieldset>
+        <legend>Image</legend>
+        <label for="image">Specimen photo (PNG, JPEG, or WebP)</label>
+        <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp" required />
+        <img id="preview" alt="Selected specimen preview" hidden />
+        <button type="button" id="use-sample">Use bundled sample image instead</button>
+        <p class="hint">The image is only held in your browser and this server's memory for the
+          duration of one request. It is never written to disk.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Location (required)</legend>
+        <label for="latitude">Latitude (-90 to 90)</label>
+        <input type="number" id="latitude" name="latitude" step="any" min="-90" max="90" required />
+        <label for="longitude">Longitude (-180 to 180)</label>
+        <input type="number" id="longitude" name="longitude" step="any" min="-180" max="180" required />
+        <p class="hint">Coordinates you enter are used only for this one request and are never
+          shown on a map or sent anywhere outside this local server.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Observation date/time (optional)</legend>
+        <label for="observed_at">Date observed</label>
+        <input type="date" id="observed_at" name="observed_at" />
+        <p class="hint">Leave blank if unknown. This demo never guesses a date on your behalf;
+          the geographic model may report less evidence when no date is given.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Environmental/context notes (optional)</legend>
+        <p class="hint">These fields are recorded as context for display only. Only "temperature"
+          is currently passed to S3 as a structural covariate; none of these fields change the
+          visual or geographic model scores.</p>
+        <label for="host">Host plant / crop</label>
+        <input type="text" id="host" name="host" />
+        <label for="trap_type">Trap type</label>
+        <input type="text" id="trap_type" name="trap_type" />
+        <label for="habitat">Habitat</label>
+        <input type="text" id="habitat" name="habitat" />
+        <label for="temperature_c">Temperature (Celsius)</label>
+        <input type="number" id="temperature_c" name="temperature_c" step="any" />
+        <label for="notes">Free-text notes</label>
+        <textarea id="notes" name="notes" rows="2"></textarea>
+      </fieldset>
+
+      <button type="submit" id="run-button">Run analysis</button>
+    </form>
+
+    <div id="loading" hidden>Running local models...</div>
+    <div id="error" class="error" hidden></div>
+
+    <section id="results" hidden>
+      <article id="section-summary" class="card"></article>
+
+      <article id="section-candidates" class="card">
+        <h2>B. Candidate comparison</h2>
+        <table id="candidate-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Genus</th>
+              <th>Visual probability</th>
+              <th>Geographic support</th>
+              <th>Fused rerank score</th>
+              <th>Ecological state</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="hint">Fused rerank score is a within-set ranking score, not a posterior
+          probability over all possible taxa.</p>
+      </article>
+
+      <article id="section-reasoning" class="card">
+        <h2>C. Reasoning</h2>
+        <ul id="narrative-list"></ul>
+      </article>
+
+      <details id="section-evidence" class="card">
+        <summary>D. Evidence sources, limitations, and versions</summary>
+        <div id="evidence-content"></div>
+      </details>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

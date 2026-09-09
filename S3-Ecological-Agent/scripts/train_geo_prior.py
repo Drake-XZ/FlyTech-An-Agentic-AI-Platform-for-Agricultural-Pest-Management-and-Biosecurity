@@ -289,6 +289,17 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     if args.dataset_report is not None and args.dataset_report.exists():
         dataset_report = json.loads(args.dataset_report.read_text(encoding="utf-8"))
 
+    only_config_id = getattr(args, "only_config_id", None)
+    if only_config_id is None:
+        config_grid = CONFIG_GRID
+    else:
+        config_grid = [config for config in CONFIG_GRID if _config_id(config) == only_config_id]
+        if not config_grid:
+            raise ValueError(
+                f"--only-config-id {only_config_id!r} does not match any entry in CONFIG_GRID "
+                f"(known ids: {[_config_id(config) for config in CONFIG_GRID]})"
+            )
+
     candidates = [
         _train_one_config(
             config,
@@ -298,7 +309,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             device=device,
             output_dir=output_dir,
         )
-        for config in CONFIG_GRID
+        for config in config_grid
     ]
     winner = _select_winner(candidates)
 
@@ -402,6 +413,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=5e-4)
     parser.add_argument("--lr-decay", type=float, default=0.98)
     parser.add_argument("--force-cpu", action="store_true")
+    parser.add_argument(
+        "--only-config-id",
+        type=str,
+        default=None,
+        help=(
+            "Restrict training to a single CONFIG_GRID entry by its config_id "
+            "(e.g. filts256_dateTrue), instead of the full 4-config grid search. "
+            "Used by the M2-D robustness audit to fit the already-selected frozen "
+            "recipe on a new spatial partition without repeating hyperparameter search."
+        ),
+    )
     return parser.parse_args()
 
 

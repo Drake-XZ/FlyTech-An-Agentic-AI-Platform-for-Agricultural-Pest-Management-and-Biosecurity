@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "M2-D robustness, ablation, and generalisation audit: pre-declared spatial-partition matrix and frozen training recipe reference, written before any new test-set inference. This matrix is a robustness study over M2-C's already-locked result; it must never be used to select a new best model, fusion weight, or risk threshold, and must never overwrite M2-C's frozen artifacts.",
+  "frozen_reference_result": {
+    "partition_id": "reference",
+    "note": "M2-C's own locked spatial-test evaluation. Frozen, read-only, never rerun by M2-D. See src/s3_ecological/experiments/m2c_reference.py for the exact hash/value constants."
+  },
+  "frozen_training_recipe": {
+    "config_id": "filts256_dateTrue",
+    "config": {"num_filts": 256, "use_date_feats": true},
+    "model": "FCNet (research/third_party/geo_prior/ vendored, unmodified upstream)",
+    "location_encoding": "encode_cos_sin: [sin(pi*lon/180), sin(pi*lat/90), cos(pi*lon/180), cos(pi*lat/90)] plus [sin(pi*date), cos(pi*date)] when use_date_feats is true",
+    "optimizer": "Adam",
+    "hyperparameters": {
+      "learning_rate": 5e-4,
+      "lr_decay": 0.98,
+      "batch_size": 64,
+      "epochs": 200,
+      "patience": 40,
+      "max_per_class": 100,
+      "seed": 42
+    },
+    "source": "docs/model_cards/geo_prior_baseline_v0.1.md, scripts/train_geo_prior.py defaults",
+    "hyperparameter_search_status": "Already performed once, on the reference partition only, by M2-C. M2-D does not repeat this search for any partition: every new partition trains only this single frozen config_id via train_geo_prior.py --only-config-id filts256_dateTrue."
+  },
+  "methods": ["s1_only", "geo_only", "fusion"],
+  "fusion_note": "Fusion uses the existing fixed formula and Prototype Implementation Profile v0.1 constants unmodified (src/s3_ecological/fusion/ is not touched by M2-D). No calibration or learned weights are introduced.",
+  "bootstrap": {
+    "seed": 42,
+    "resamples": 2000,
+    "note": "Matches M2-C's bootstrap_confidence_interval usage in scripts/evaluate_geo_prior_m2c.py."
+  },
+  "partitions": [
+    {
+      "partition_id": "reference",
+      "grid_size_degrees": 1.0,
+      "seed": 42,
+      "role": "frozen_reference",
+      "action": "none - read M2-C's existing artifacts only, never rerun",
+      "spatial_split_identity_source": "src/s3_ecological/experiments/m2c_reference.py:M2C_SPATIAL_SPLIT_IDENTITY"
+    },
+    {
+      "partition_id": "grid0_5_seed42",
+      "grid_size_degrees": 0.5,
+      "seed": 42,
+      "role": "new_training_and_s1_bundle",
+      "action": "full pipeline: prepare-geo-experiment, prepare_geo_prior_dataset, train_geo_prior (--only-config-id filts256_dateTrue), prepare_tf4_s1_baseline, generate_tf4_s1_outputs, evaluate_geo_prior_m2c"
+    },
+    {
+      "partition_id": "grid2_0_seed42",
+      "grid_size_degrees": 2.0,
+      "seed": 42,
+      "role": "new_training_and_s1_bundle",
+      "action": "full pipeline: prepare-geo-experiment, prepare_geo_prior_dataset, train_geo_prior (--only-config-id filts256_dateTrue), prepare_tf4_s1_baseline, generate_tf4_s1_outputs, evaluate_geo_prior_m2c"
+    },
+    {
+      "partition_id": "grid1_0_seed7",
+      "grid_size_degrees": 1.0,
+      "seed": 7,
+      "role": "new_training_and_s1_bundle",
+      "action": "full pipeline: prepare-geo-experiment, prepare_geo_prior_dataset, train_geo_prior (--only-config-id filts256_dateTrue), prepare_tf4_s1_baseline, generate_tf4_s1_outputs, evaluate_geo_prior_m2c"
+    },
+    {
+      "partition_id": "grid1_0_seed123",
+      "grid_size_degrees": 1.0,
+      "seed": 123,
+      "role": "new_training_and_s1_bundle",
+      "action": "full pipeline: prepare-geo-experiment, prepare_geo_prior_dataset, train_geo_prior (--only-config-id filts256_dateTrue), prepare_tf4_s1_baseline, generate_tf4_s1_outputs, evaluate_geo_prior_m2c"
+    }
+  ],
+  "split_ratios": {"train_ratio": 0.60, "validation_ratio": 0.20, "test_ratio": 0.20},
+  "spatial_block_strategy": {"name": "latitude_longitude_grid_v0.1", "version": "0.1"},
+  "ablation": {
+    "spec_id": "reference_location_only",
+    "partition_id": "reference",
+    "compares": ["filts256_dateTrue", "filts256_dateFalse"],
+    "baseline_config_id": "filts256_dateTrue",
+    "ablated_config_id": "filts256_dateFalse",
+    "ablated_config": {"num_filts": 256, "use_date_feats": false},
+    "training_status": "Already trained by M2-C as part of its own 4-config grid search on the reference train split (same seed). M2-D reuses this checkpoint read-only via src/s3_ecological/experiments/geo_prior_candidate.py; it is NOT retrained.",
+    "checkpoint_path": "data/local/m2/geo_prior/training/filts256_dateFalse/checkpoint.pt",
+    "candidate_table_source": "data/local/m2/geo_prior/training/candidate_table.json",
+    "evaluation_reuses_reference_s1_bundle": true,
+    "note": "Same reference spatial-split-manifest and same reference S1 bundle M2-C already validated are reused for this comparison; only the geo_prior config differs, so no new S1 bundle is required for the ablation."
+  },
+  "per_partition_pipeline_commands_template": [
+    "python -m s3_ecological.cli prepare-geo-experiment --config config/geo_experiment.m2d.<partition_id>.toml --output-dir data/local/m2/m2d/<partition_id>/readiness --overwrite",
+    "python scripts/prepare_geo_prior_dataset.py --spatial-split-manifest data/local/m2/m2d/<partition_id>/readiness/spatial-split-manifest.json --output-dir data/local/m2/m2d/<partition_id>/geo_prior/dataset",
+    "data/local/m2/s1/venv/Scripts/python.exe scripts/train_geo_prior.py --train-manifest data/local/m2/m2d/<partition_id>/geo_prior/dataset/train_manifest.csv --validation-manifest data/local/m2/m2d/<partition_id>/geo_prior/dataset/validation_manifest.csv --dataset-report data/local/m2/m2d/<partition_id>/geo_prior/dataset/dataset_report.json --output-dir data/local/m2/m2d/<partition_id>/geo_prior/training --seed 42 --only-config-id filts256_dateTrue",
+    "python scripts/prepare_tf4_s1_baseline.py --spatial-split-manifest data/local/m2/m2d/<partition_id>/readiness/spatial-split-manifest.json --output-dir data/local/m2/m2d/<partition_id>/s1/prepared",
+    "data/local/m2/s1/venv/Scripts/python.exe scripts/generate_tf4_s1_outputs.py --evaluation-manifest data/local/m2/m2d/<partition_id>/s1/prepared/s1_evaluation_manifest.csv --taxonomy-crosswalk data/local/m2/m2d/<partition_id>/s1/prepared/tf4_taxonomy_crosswalk.json --preparation-report data/local/m2/m2d/<partition_id>/s1/prepared/tf4_s1_preparation_report.json --output-dir data/local/m2/m2d/<partition_id>/s1/outputs",
+    "python -m s3_ecological.cli prepare-geo-experiment --config config/geo_experiment.m2d.<partition_id>.toml --output-dir data/local/m2/m2d/<partition_id>/readiness --overwrite",
+    "data/local/m2/s1/venv/Scripts/python.exe scripts/evaluate_geo_prior_m2c.py --spatial-split-manifest data/local/m2/m2d/<partition_id>/readiness/spatial-split-manifest.json --s1-bundle-manifest data/local/m2/m2d/<partition_id>/s1/outputs/s1_bundle_manifest.json --selected-configuration data/local/m2/m2d/<partition_id>/geo_prior/training/selected_configuration.json --output-dir data/local/m2/m2d/<partition_id>/evaluation --report-label \"M2-D (<partition_id>)\" --report-filename m2d_locked_test_report.json"
+  ],
+  "reference_ablation_commands_template": [
+    "python scripts/extract_geo_prior_candidate.py --candidate-table data/local/m2/geo_prior/training/candidate_table.json --config-id filts256_dateFalse --output-dir data/local/m2/m2d/reference_location_only/training",
+    "data/local/m2/s1/venv/Scripts/python.exe scripts/evaluate_geo_prior_m2c.py --spatial-split-manifest data/local/m2/readiness/spatial-split-manifest.json --s1-bundle-manifest data/local/m2/s1/outputs/fold-0/s1_bundle_manifest.json --selected-configuration data/local/m2/m2d/reference_location_only/training/selected_configuration.json --output-dir data/local/m2/m2d/reference_location_only/evaluation --report-label \"M2-D (reference, location-only ablation)\" --report-filename m2d_locked_test_report.json"
+  ],
+  "prohibited_conclusions": [
+    "No open-set, OOD, calibration, potential-incursion, false-alert, or biosecurity-efficacy conclusions without corresponding authorised data and a pre-registered protocol.",
+    "Spatial partitions in this matrix are not temporal holdouts and must not be reported as local/non-local OOD splits.",
+    "No new best model, fusion weight, or risk threshold selection from these results.",
+    "No modification of M2-C's frozen configuration, checkpoint, report, or spatial split identity."
+  ]
+}

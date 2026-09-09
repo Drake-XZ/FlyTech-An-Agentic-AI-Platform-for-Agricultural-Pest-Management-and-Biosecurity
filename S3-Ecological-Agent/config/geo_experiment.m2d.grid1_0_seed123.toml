@@ -1,0 +1,50 @@
+# M2-D robustness partition: grid 1.0 degrees, seed 123
+# (DesignSuggestionLog.md "M2-D robustness, ablation, and generalisation
+# audit"; config/m2d_robustness_matrix.json partition_id "grid1_0_seed123").
+#
+# Copy of config/geo_experiment.m2.toml with only experiment_id, seed, and
+# s1_evaluation_input_path changed. See config/m2d_robustness_matrix.json
+# for the full pre-declared matrix.
+#
+# Reproduce from repo root:
+#
+#   python -m s3_ecological.cli prepare-geo-experiment \
+#     --config config/geo_experiment.m2d.grid1_0_seed123.toml \
+#     --output-dir data/local/m2/m2d/grid1_0_seed123/readiness --overwrite
+#
+# `data/local/` is gitignored - no real bundle or readiness output files this
+# config produces are committed to the repository.
+
+schema_version = "1.1.0"
+experiment_id = "m2d-fruit-fly-occurrences-v1-readiness-grid1_0_seed123"
+
+generated_at = 2026-09-09T00:00:00+10:00
+
+occurrence_snapshot_path = "data/local/m2/bundle/occurrences.json"
+taxonomy_snapshot_path = "data/local/m2/bundle/taxonomy.json"
+import_report_path = "data/local/m2/bundle/import-report.json"
+
+target_taxa = ["Anastrepha", "Bactrocera", "Ceratitis", "Rhagoletis"]
+
+geographic_scope = "global"
+geographic_scope_mode = "label_only"
+
+data_nature = "real_world_data"
+
+s1_evaluation_input_path = "data/local/m2/m2d/grid1_0_seed123/s1/outputs/s1_bundle_manifest.json"
+
+[authorisation]
+status = "authorised"
+authorisation_reference = "owner-approval-m2-2026-09-08"
+purpose = "FlyTech S3 Milestone 2-D fruit-fly geographic-prior robustness, ablation, and generalisation audit"
+approving_role = "project owner"
+
+[spatial_split]
+block_strategy = "latitude_longitude_grid_v0.1"
+grid_size_degrees = 1.0
+train_ratio = 0.60
+validation_ratio = 0.20
+test_ratio = 0.20
+seed = 123
+
+[settings_overrides]

@@ -2274,3 +2274,417 @@ the new documentation, this log entry, or the underlying code claims
 production readiness or a biosecurity/biological-efficacy result; the small-
 Anastrepha, iNaturalist-research-grade-label, and closed-set-classifier
 limitations are restated in both new documents.
+
+## 2026-09-09 Australia/Sydney - M2-D geographic-prior robustness, ablation, and generalisation audit
+
+### Scope and boundaries
+
+Implemented the M2-D increment authorised in `DesignSuggestionLog.md`
+("M2-D robustness, ablation, and generalisation audit"). This is a
+robustness study over M2-C's already-locked result, not a new confirmatory
+result: M2-C's spatial test (grid 1.0 degrees, seed 42), its frozen
+`filts256_dateTrue` checkpoint, `docs/m2c_evaluation_report.md`, and every
+`data/local/m2/geo_prior/` / `data/local/m2/s1/` artifact were not rerun,
+retrained, or modified - only read read-only for the location-only ablation
+and for the frozen-reference cross-checks in `m2c_reference.py`.
+`src/s3_ecological/fusion/`, Prototype Implementation Profile v0.1
+thresholds, public schemas, and `research/third_party/geo_prior/` were not
+touched. All new script changes were additive with unchanged defaults, so a
+hypothetical rerun of M2-C's own exact commands is byte-for-byte unaffected.
+
+### Freeze-first artifacts (written and tested before any new inference)
+
+- Added `src/s3_ecological/experiments/m2c_reference.py`: frozen M2-C
+  constants (report hash, checkpoint hash, spatial split identity, S1 bundle
+  hash, the three locked-test accuracy/macro-F1 values) plus
+  `verify_m2c_report_hash()` (always runnable) and
+  `verify_m2c_local_artifacts()` (runs only when local M2-C artifacts are
+  present).
+- Added `config/m2d_robustness_matrix.json` (committed): the five-partition
+  matrix (`reference` frozen + four new `grid<scale>_seed<seed>` partitions
+  covering grid sizes {0.5, 1.0, 2.0} and seeds {7, 42, 123}), the frozen
+  training recipe (`filts256_dateTrue`, unchanged hyperparameters), the
+  three methods, the bootstrap protocol (seed 42, 2000 resamples), the
+  `reference_location_only` ablation spec, per-partition and ablation
+  reproduction command templates, and an explicit `prohibited_conclusions`
+  list (no OOD/calibration/incursion claim; no new best-model/threshold
+  selection; no modification of M2-C's frozen artifacts).
+- Added `tests/unit/test_m2c_reference.py` and `tests/unit/test_m2d_matrix.py`
+  - the latter recomputes every partition's `spatial_split_identity` via the
+  real `compute_split_identity()` and asserts the `reference` partition's
+  recomputed identity equals `m2c_reference.M2C_SPATIAL_SPLIT_IDENTITY` while
+  all four new partitions are pairwise distinct from it and each other.
+  Both files were written and passing before any new training or evaluation
+  command was run, matching the plan's "must not look at new test metrics
+  before finalising method" requirement.
+
+### Script changes (additive, default-preserving)
+
+- `scripts/train_geo_prior.py`: added optional `--only-config-id` (default
+  `None`). When set, filters `CONFIG_GRID` to the single matching entry
+  before training, so a new partition trains only the frozen
+  `filts256_dateTrue` recipe with no hyperparameter search repeated. Default
+  (unset) behaviour is unchanged.
+- `scripts/evaluate_geo_prior_m2c.py`: added optional `--report-label`
+  (default `"M2-C"`) and `--report-filename` (default
+  `"m2c_locked_test_report.json"`). Only when `--report-label` differs from
+  the default do the auto-derived `purpose`/`identity` strings change; the
+  default invocation stays byte-identical to M2-C's own command.
+- Added `scripts/extract_geo_prior_candidate.py` (torch-free CLI) and
+  `src/s3_ecological/experiments/geo_prior_candidate.py`: reads an existing
+  `candidate_table.json`, re-verifies the requested config's checkpoint
+  SHA-256 against the recorded value, and writes a
+  `selected_configuration.json`-shaped payload - used only to reuse M2-C's
+  own already-trained `filts256_dateFalse` candidate read-only for the
+  ablation, never to retrain it.
+
+### Real runs: four new spatial partitions (full pipeline each)
+
+For each of `grid0_5_seed42`, `grid2_0_seed42`, `grid1_0_seed7`,
+`grid1_0_seed123` (own TOML config under `config/geo_experiment.m2d.<id>.toml`,
+own gitignored output tree under `data/local/m2/m2d/<id>/`), ran in order:
+
+```powershell
+python -m s3_ecological.cli prepare-geo-experiment --config config/geo_experiment.m2d.<id>.toml --output-dir data/local/m2/m2d/<id>/readiness --overwrite
+python scripts/prepare_geo_prior_dataset.py --spatial-split-manifest data/local/m2/m2d/<id>/readiness/spatial-split-manifest.json --output-dir data/local/m2/m2d/<id>/geo_prior/dataset
+data/local/m2/s1/venv/Scripts/python.exe scripts/train_geo_prior.py --train-manifest data/local/m2/m2d/<id>/geo_prior/dataset/train_manifest.csv --validation-manifest data/local/m2/m2d/<id>/geo_prior/dataset/validation_manifest.csv --dataset-report data/local/m2/m2d/<id>/geo_prior/dataset/dataset_report.json --output-dir data/local/m2/m2d/<id>/geo_prior/training --seed 42 --only-config-id filts256_dateTrue
+python scripts/prepare_tf4_s1_baseline.py --spatial-split-manifest data/local/m2/m2d/<id>/readiness/spatial-split-manifest.json --output-dir data/local/m2/m2d/<id>/s1/prepared
+data/local/m2/s1/venv/Scripts/python.exe scripts/generate_tf4_s1_outputs.py --evaluation-manifest data/local/m2/m2d/<id>/s1/prepared/s1_evaluation_manifest.csv --taxonomy-crosswalk data/local/m2/m2d/<id>/s1/prepared/tf4_taxonomy_crosswalk.json --preparation-report data/local/m2/m2d/<id>/s1/prepared/tf4_s1_preparation_report.json --output-dir data/local/m2/m2d/<id>/s1/outputs
+python -m s3_ecological.cli prepare-geo-experiment --config config/geo_experiment.m2d.<id>.toml --output-dir data/local/m2/m2d/<id>/readiness --overwrite
+data/local/m2/s1/venv/Scripts/python.exe scripts/evaluate_geo_prior_m2c.py --spatial-split-manifest data/local/m2/m2d/<id>/readiness/spatial-split-manifest.json --s1-bundle-manifest data/local/m2/m2d/<id>/s1/outputs/s1_bundle_manifest.json --selected-configuration data/local/m2/m2d/<id>/geo_prior/training/selected_configuration.json --output-dir data/local/m2/m2d/<id>/evaluation --report-label "M2-D (<id>)" --report-filename m2d_locked_test_report.json
+```
+
+The second `prepare-geo-experiment` call (after the S1 bundle exists)
+re-validated readiness with `s1_input_status: "available_authorised"` for
+every partition, confirming each partition's own S1 bundle was
+independently regenerated from the shared, never-retrained TF4 checkpoint
+and matched only that partition's own spatial-test observations (no reuse
+of M2-C's or another partition's bundle - structurally enforced by
+`validate_s1_evaluation_bundle`'s identity check).
+
+Real per-partition results (S1-only / Geo-only / Fixed fusion; same
+unmodified fusion formula, Profile v0.1 constants, and seed-42/2000-resample
+bootstrap as M2-C):
+
+| partition_id | spatial_split_identity (prefix) | S1-only acc/F1 (n) | Geo-only acc/F1 (n, excl. undated) | Fusion acc/F1 (n) |
+| --- | --- | --- | --- | --- |
+| `grid0_5_seed42` | `0112d9ca1477...` | 91.75% / 85.46% (1006) | 81.86% / 77.72% (981, excl 25) | 95.53% / 94.04% (1006) |
+| `grid2_0_seed42` | `1e03e468d76b...` | 90.82% / 81.82% (1002) | 91.50% / 88.68% (988, excl 14) | 96.41% / 94.82% (1002) |
+| `grid1_0_seed7` | `510f617841...` | 89.85% / 80.77% (1005) | 89.10% / 81.98% (982, excl 23) | 95.42% / 92.03% (1005) |
+| `grid1_0_seed123` | `20933c2f80fd...` | 89.88% / 79.73% (949) | 89.41% / 84.62% (935, excl 14) | 95.79% / 93.45% (949) |
+| `reference` (M2-C, frozen, not rerun) | `59014aec1786...` | 89.92% / 79.27% (942) | 89.97% / 87.82% (927, excl 15) | 95.01% / 92.52% (942) |
+
+Each partition's own checkpoint was independently trained on that
+partition's own train split only (checkpoint SHA-256 differs across all
+four: `9829fbd0...`, `03db5c10...`, `c52d0988...`, `45bd9247...`), never on
+another partition's data, and never reusing M2-C's own
+`952d81008184f18888d22de54b3557f7c5429b35ed28782aabd6914707e61086`
+checkpoint.
+
+### Real run: reference-partition location-only ablation (no retrain)
+
+```powershell
+python scripts/extract_geo_prior_candidate.py --candidate-table data/local/m2/geo_prior/training/candidate_table.json --config-id filts256_dateFalse --output-dir data/local/m2/m2d/reference_location_only/training
+data/local/m2/s1/venv/Scripts/python.exe scripts/evaluate_geo_prior_m2c.py --spatial-split-manifest data/local/m2/readiness/spatial-split-manifest.json --s1-bundle-manifest data/local/m2/s1/outputs/fold-0/s1_bundle_manifest.json --selected-configuration data/local/m2/m2d/reference_location_only/training/selected_configuration.json --output-dir data/local/m2/m2d/reference_location_only/evaluation --report-label "M2-D (reference, location-only ablation)" --report-filename m2d_locked_test_report.json
+```
+
+Reused M2-C's own already-trained `filts256_dateFalse` checkpoint
+(`bbce2aa38841ecd4aafa8633e8d98f3aa1d57231711114241e3bb5ee00ec0708`, config
+`num_filts=256, use_date_feats=false`) read-only - not retrained - against
+the same reference spatial split and the same reference S1 bundle M2-C
+already validated. Since location-only needs no date, `geo_only_excluded_
+missing_date=0` (all 942 observations scored): Geo-only 87.05%/85.10%
+(942); Fixed fusion 95.54%/93.97% (942), versus the date-aware frozen
+recipe's Geo-only 89.97%/87.82% (927, excluding 15 undated) and fusion
+95.01%/92.52% (942) on the same partition. Because the two Geo-only figures
+are on non-identical observation counts (942 vs 927), this is reported as a
+directional, not strictly controlled, comparison; fusion itself is close
+between the two configurations and does not clearly favour either.
+
+### Cross-partition conclusions
+
+Stable: fixed fusion outperformed both S1-only and Geo-only on every one of
+the five partitions (four new + frozen reference), with a tighter
+accuracy/macro-F1 range across partitions than either single-source method.
+Not stable / partition-sensitive: Geo-only's own standalone accuracy ranged
+81.86%-91.50% across the five partitions (widest of the three methods),
+weakest on the 0.5-degree grid and strongest on the 2.0-degree grid in this
+one-seed-per-scale design - which cannot by itself separate a genuine
+grid-scale effect from partition-specific sampling noise, since only one
+seed was run per non-reference scale. Fusion's visual-fallback behaviour
+(observations with a missing/unusable date still fuse visual-only, per
+`soft_fusion.fuse`'s `geo_support is None` handling, never a fabricated
+date) held identically across all five partitions: `fusion` and `s1_only`
+observation counts were always equal; only `geo_only`'s count was ever
+reduced, by exactly the excluded-undated count. Full tables, per-genus F1
+breakdowns, and the explicit list of conclusions this audit cannot draw
+(no OOD/calibration/incursion/biosecurity-efficacy claim; no new best-
+model/fusion-weight/threshold selection; no production-readiness claim; no
+scale-vs-noise disambiguation) are in the new `docs/m2d_robustness_report.md`.
+
+### Tests and static checks
+
+- Added `tests/unit/test_m2c_reference.py`, `tests/unit/test_m2d_matrix.py`,
+  `tests/unit/test_geo_prior_candidate.py` (synthetic candidate-table
+  fixture; correct extraction, checkpoint-hash-mismatch rejection, unknown
+  `config_id` rejection).
+- Extended `tests/unit/test_s1_bundle.py`: a bundle declaring partition A's
+  `spatial_split_identity` is rejected by `validate_s1_evaluation_bundle`
+  when the caller expects partition B's identity - encodes the "no reusing
+  another partition's S1 bundle" rule directly against real code.
+- Extended `tests/integration/test_geo_prior_training.py`
+  (`pytest.importorskip("torch")`-gated): `--only-config-id` trains exactly
+  one config; `candidate_table.json` has exactly one entry;
+  `selected_configuration.json`'s `frozen_config_id` matches.
+- Added `tests/integration/test_evaluate_geo_prior_labels.py` (torch-gated):
+  default invocation reproduces the exact existing M2-C `purpose`/`identity`
+  strings and filename (regression guard); `--report-label`/
+  `--report-filename` change only those fields; a record with a
+  missing/invalid date under a date-aware config is excluded from
+  `geo_only` but still produces `s1_only`/`fusion` predictions (safe
+  fallback, no fabricated date).
+- `python -m pytest -q`: 321 passed, 2 skipped (same pre-existing,
+  unrelated `pydantic_ai` optional-dependency skips as M2-C). As with M2-C,
+  this session's plain `python` resolves to the Anaconda base interpreter
+  (torch installed globally), so the new torch-gated tests ran for real
+  here too rather than auto-skipping.
+- `data/local/m2/s1/venv/Scripts/python.exe -m pytest
+  tests/integration/test_geo_prior_training.py
+  tests/integration/test_evaluate_geo_prior_labels.py -q`: 6 passed - the
+  dedicated S1 venv (torch 2.8.0+cu128) confirms the same result
+  independently.
+- `python -m ruff check .`: all checks passed.
+- `python -m pyright`: 0 errors, 0 warnings, 0 informations.
+- `git diff --check`: clean, verified by staging all S3-Ecological-Agent
+  paths (excluding the unrelated sibling `../WEEK 5/` and `../tmp/`
+  directories), running the check, confirming via `git status --short` that
+  only the expected files were staged, then unstaging - no commit was made.
+
+### Bug found and fixed during this run
+
+`train_geo_prior.py` writes `selected_configuration.json` directly under
+`<output-dir>/`, not nested under `<output-dir>/<config_id>/` (only
+`checkpoint.pt` is nested per-config). The plan's own draft command for
+`evaluate_geo_prior_m2c.py --selected-configuration` had assumed the nested
+path and failed with `FileNotFoundError` on the first partition
+(`grid0_5_seed42`); corrected the live command, then found and fixed the
+identical wrong nested path inside the committed
+`config/m2d_robustness_matrix.json`'s `per_partition_pipeline_commands_template`
+(step 8) so the pre-declared reproduction template itself is accurate, and
+re-ran `tests/unit/test_m2d_matrix.py` to confirm no regression.
+
+### Files added or changed
+
+- Added `src/s3_ecological/experiments/m2c_reference.py` and
+  `src/s3_ecological/experiments/geo_prior_candidate.py`.
+- Added `scripts/extract_geo_prior_candidate.py`.
+- Updated `scripts/train_geo_prior.py` (`--only-config-id`) and
+  `scripts/evaluate_geo_prior_m2c.py` (`--report-label`,
+  `--report-filename`), both additive and default-preserving.
+- Added `config/m2d_robustness_matrix.json` and four partition configs
+  `config/geo_experiment.m2d.grid0_5_seed42.toml`,
+  `config/geo_experiment.m2d.grid2_0_seed42.toml`,
+  `config/geo_experiment.m2d.grid1_0_seed7.toml`,
+  `config/geo_experiment.m2d.grid1_0_seed123.toml`.
+- Added `tests/unit/test_m2c_reference.py`, `tests/unit/test_m2d_matrix.py`,
+  `tests/unit/test_geo_prior_candidate.py`,
+  `tests/integration/test_evaluate_geo_prior_labels.py`; extended
+  `tests/unit/test_s1_bundle.py` and
+  `tests/integration/test_geo_prior_training.py`.
+- Added `docs/m2d_robustness_report.md`.
+- Updated `docs/model_cards/geo_prior_baseline_v0.1.md` and
+  `docs/model_cards/tf4_visual_baseline_v0.1.md` with append-only "M2-D
+  robustness notes" sections; no existing M2-C content in either card was
+  altered.
+- All real training outputs, S1 bundles, readiness reports, and evaluation
+  reports for all four new partitions plus the ablation live under
+  gitignored `data/local/m2/m2d/`; nothing under that tree is committed.
+
+### Mathematical-formula and parameter impact
+
+No S3 mathematical formula, decision equation, Prototype Implementation
+Profile v0.1 threshold, fusion weight, risk-state precedence rule, public
+schema, provider behaviour, or runtime interface changed.
+`src/s3_ecological/fusion/` was not imported, read, or modified by any new
+M2-D code path beyond the same `fuse_predictions()`/`soft_fusion.fuse()`
+call M2-C already used unmodified. The frozen `filts256_dateTrue` training
+recipe (architecture, optimiser, hyperparameters) was reused byte-identical
+across all four new partitions via `--only-config-id`; no hyperparameter
+search was repeated for any partition. The TF4 visual checkpoint was reused
+unmodified (never retrained) for every partition's S1 bundle.
+
+### Not a production or biosecurity claim
+
+This is a robustness/ablation audit over an already-experimental result,
+not a new confirmatory measurement and not a production-readiness or
+biosecurity/biological-efficacy claim. No open-set, out-of-distribution,
+calibration, potential-incursion, or false-alert conclusion is drawn or
+implied anywhere in this entry, `config/m2d_robustness_matrix.json`, or
+`docs/m2d_robustness_report.md`; the pre-declared spatial partitions are
+geographic blocks, not temporal or local/non-local-OOD splits. No new best
+model, fusion weight, or risk threshold was selected from these results,
+and M2-C's own frozen configuration, checkpoint, and locked-test report
+remain unchanged and authoritative as the project's single confirmatory M2
+result.
+
+## 2026-09-09 Australia/Sydney - Local research-demo visualization (image + geo upload)
+
+### Scope and authority
+
+This adds the project's first-ever UI/HTTP surface, in the location
+`src/s3_ecological/api/` already anticipated and bounded by that package's
+own docstring ("a thin wrapper... must not re-implement, duplicate, or
+bypass any of `run_assessment`'s validation, scoring, or risk logic") and by
+the already-declared, previously-unused `api` extra in `pyproject.toml`.
+**This is a local research demo only** - not a production system, not a
+quarantine/inspection decision tool, and not a biosecurity decision system.
+No M2-C/M2-D frozen result, S3 fusion weight, risk threshold, public schema,
+or `research/third_party/geo_prior/` file was read for modification or
+changed by this work.
+
+### What was built
+
+- `src/s3_ecological/api/demo_config.py`, `validation.py` - torch-free
+  configuration and input validation (coordinate range, ISO-8601 date
+  parsing that returns `None` rather than ever fabricating "now", image
+  magic-byte/size/content-type checks).
+- `src/s3_ecological/api/s1_model.py` - a lazy-loaded adapter around the
+  existing M2-B TF4 EfficientNet-B2 checkpoint: `Resize((260,260))` ->
+  `ToTensor()` -> `Normalize(imagenet stats)` -> softmax over the frozen
+  four-genus class order, matching `docs/model_cards/tf4_visual_baseline_v0.1.md`
+  exactly. Torch/torchvision are imported only inside this module's
+  functions.
+- `src/s3_ecological/api/geo_model.py` - `FCNetGeoPriorModel`, an
+  independent, self-contained re-implementation of the frozen M2-C
+  `FCNet`/location-time-encoding architecture (never imports from
+  `scripts/`, which relies on script-relative sibling imports), implementing
+  the existing `GeoPriorModel` Protocol unmodified. Returns `geo_support=None`
+  (never a fabricated score) when the checkpoint is unavailable or when the
+  frozen config requires a date and none was supplied.
+- `src/s3_ecological/api/explain.py` - builds plain-language narrative
+  strings from real `AssessmentResult`/`ObservationRequest` fields only (top
+  genus, rerank score labelled "not a probability", geo-support availability,
+  missing-date/missing-location/missing-evidence notes, a fixed synthetic-
+  evidence-dataset disclosure, and a fixed "no morphological explanation"
+  sentence in place of an unimplemented Grad-CAM).
+- `src/s3_ecological/api/app.py` - the FastAPI app: `GET /` (static UI),
+  `GET /api/health`, `POST /api/assess` (validates input, runs the two
+  adapters above, builds an `ObservationRequest`, calls
+  `run_assessment(...)` unmodified with the same providers/settings/risk
+  policy `cli.py`'s `assess` command already uses, and returns the real
+  `AssessmentResult.model_dump()` plus the narrative sidecar). Uploaded image
+  bytes are read into memory only and never written to disk; logs record
+  only a coarse (one-decimal) coordinate, never raw bytes or the exact pair.
+- `src/s3_ecological/api/static/{index.html,style.css,app.js,sample_specimen.png}`
+  - a no-build-step, vanilla HTML/CSS/JS page (upload form + four results
+  sections A-D) served by the same FastAPI app via `StaticFiles`; the sample
+  image is a small stdlib-generated synthetic gradient PNG, not a real
+  specimen photo.
+- `src/s3_ecological/cli.py` - new `serve-demo` subcommand (`--host`,
+  `--port`), importing `uvicorn`/`api.app` only inside its own handler with a
+  friendly message if the `api`/`demo-ml` extras aren't installed; every
+  other subcommand is unaffected and stays torch/fastapi-free.
+- `pyproject.toml` - `api` extra gained `python-multipart`, `pillow`; new
+  `demo-ml = ["torch>=2.1", "torchvision>=0.16"]` extra; `api/static/*`
+  added to package data.
+
+### Tests
+
+- `tests/unit/test_demo_validation.py`, `tests/unit/test_demo_explain.py` -
+  torch/fastapi-free; validation edge cases and narrative-text assertions
+  (including that no unsafe phrase such as "confirmed incursion" as an
+  unqualified claim, "species confirmation", or "quarantine cleared" ever
+  appears, while confirming the safe negated form "not a confirmed
+  incursion" does appear when `review_required` is true).
+- `tests/integration/test_demo_api.py` (`pytest.importorskip("fastapi")`,
+  `httpx`) - a `TestClient` against the real app with `s1_model.infer` and
+  `geo_model.FCNetGeoPriorModel` monkeypatched to stub implementations, so
+  these tests need neither torch nor a real checkpoint. Covers: happy path
+  with location; missing-location safe degrade (`missing_evidence`,
+  `review_required=True`, all `geo_support is None`); missing date never
+  fabricates a timestamp; invalid/one-sided coordinates and invalid images
+  rejected with HTTP 400; environmental fields echoed as context only, never
+  fed into the model; the response text never contains an unsafe phrase; and
+  that no file appears under `data/local/` before or after a request.
+- `tests/integration/test_demo_models.py` (`pytest.importorskip("torch")`) -
+  exercises the real TF4/geo-prior adapters against the real local M2
+  checkpoints when present (softmax sums to ~1, geo-prior scores in
+  `[0,1]` or `None`, no fabricated date), skipped cleanly when either is
+  absent.
+
+### Bugs found and fixed during this pass (all self-caught, no user report)
+
+- `explain.py`'s first draft used `RerankedCandidate.name`/
+  `.visual_probability`, which don't exist; the real fields are
+  `submitted_name`/`visual_probability_raw` - caught by re-reading
+  `schemas/response.py` before any test ran.
+- FastAPI 422'd every upload because the route declared `image: UploadFile`
+  without `File(...)`, so FastAPI resolved it as a required query parameter
+  instead of a file upload - fixed by declaring `image: UploadFile = File(...)`.
+- After that fix, every upload test failed with
+  `PydanticUserError: TypeAdapter[...ForwardRef('UploadFile')...] is not
+  fully defined`: `app.py` has `from __future__ import annotations`, so
+  FastAPI/Pydantic must resolve the route's string annotations via the
+  module's own globals - but the fastapi imports originally lived inside
+  `create_app()`'s local scope. Fixed by moving `FastAPI`/`File`/`Form`/
+  `HTTPException`/`UploadFile`/`FileResponse`/`JSONResponse`/`StaticFiles`
+  to module-level imports in `app.py` (still safe: `app.py` itself is only
+  ever imported lazily by `cli.py`'s `serve-demo` handler or by test modules
+  that already gate on `pytest.importorskip("fastapi")`).
+- One test assertion (`test_narrative_never_uses_unsafe_phrases`) originally
+  flagged the substring `"confirmed incursion"` inside the deliberately safe
+  phrase "not a confirmed incursion" as unsafe - a bug in the test's own
+  assertion, not in `explain.py`; corrected to check only for the
+  unqualified affirmative form and to positively assert the safe negated
+  phrase is present.
+
+### Environment note for `pyright`
+
+`pyright`'s own environment auto-detection (independent of which Python
+interpreter launched `-m pyright`) resolved this machine's Anaconda base
+install, the same environment that gave earlier M2 sessions "0 pyright
+errors" for torch-importing files without anyone installing torch into
+`.venv`. That base install had torch but not `fastapi`/`httpx`; installed
+both (`pip install -e ".[api]"` then `pip install httpx`, into the Anaconda
+base, not `.venv`) so both the new torch-gated and fastapi-gated modules
+resolve in the same pass. Three genuine (if currently dormant) typing gaps
+were then fixed: `geo_model.py` narrowed `request.observed_at` through an
+explicit `assert` documenting the invariant the early-return above it
+already guarantees, rather than relying on pyright inferring it through a
+conditional expression; `s1_model.py` added two `typing.cast` calls
+(`in_features` from `nn.Module.__getattr__`'s untyped fallback, and
+`transform(image)`'s result from `Compose.__call__`'s overload stub
+matching the wrong overload) - both are pre-existing torchvision/PyTorch
+stub limitations, not logic bugs; the real runtime values were already
+correct.
+
+### Verification performed
+
+- `python -m pytest -q` (main `.venv`, which now has the `api` extra plus
+  `httpx` installed): **354 passed, 5 skipped** (2 pre-existing `pydantic_ai`
+  skips; 3 torch-gated demo/M2 integration-test skips, since `.venv` itself
+  has no torch - the new demo-model tests are exercised for real via the
+  Anaconda base / dedicated M2 S1 venv instead, same convention as prior M2
+  entries).
+- `python -m ruff check .` -> **All checks passed!** (after fixing import
+  order in the two new `api/` modules and reflowing several long lines this
+  increment introduced in its new test files).
+- `python -m pyright` -> **0 errors, 0 warnings, 0 informations** (see
+  "Environment note" above for the three findings fixed and why).
+- `git diff --check` -> clean; only pre-existing CRLF/LF conversion notices
+  on unrelated Windows working-copy files, same as every prior entry.
+- Manual smoke test: `s3-ecological serve-demo`, ran once in a browser with
+  the bundled synthetic sample image and a generic coordinate, confirmed all
+  four result sections render and `data/local/` is unchanged afterward.
+
+### Not a production or biosecurity claim
+
+Every number this demo displays traces directly to a field already produced
+by `run_assessment`'s existing, unmodified fusion/risk logic, or to the
+model-adapter outputs feeding it; nothing is invented by the new UI/API
+code. No species-level confirmation, pest-quarantine conclusion, incursion
+confirmation, absence claim, or production-readiness claim is made anywhere
+in the page, the API response, or this entry. Uploaded images, real
+coordinates, and model checkpoints are not committed; runtime artifacts stay
+in memory only (uploads) or in already-gitignored `data/local/`
+(checkpoints).

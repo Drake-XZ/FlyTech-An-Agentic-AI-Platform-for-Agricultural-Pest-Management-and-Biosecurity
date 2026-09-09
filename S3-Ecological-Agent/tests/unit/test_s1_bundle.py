@@ -32,7 +32,7 @@ def _jsonl(path: Path, rows: list[dict]) -> None:
     )
 
 
-def _write_bundle(tmp_path: Path) -> Path:
+def _write_bundle(tmp_path: Path, *, split_identity: str = "split-id") -> Path:
     image_sha = "a" * 64
     prediction = {
         "schema_version": "1.0.0",
@@ -115,7 +115,7 @@ def _write_bundle(tmp_path: Path) -> Path:
             {
                 "authorisation_reference": "owner-ref",
                 "evaluation": {
-                    "spatial_split_identity": "split-id",
+                    "spatial_split_identity": split_identity,
                     "manifest_sha256": _sha(evaluation_path),
                 },
             }
@@ -139,7 +139,7 @@ def _write_bundle(tmp_path: Path) -> Path:
         },
         "evaluation_scope": {
             "spatial_split": "test",
-            "spatial_split_identity": "split-id",
+            "spatial_split_identity": split_identity,
             "observation_count": 1,
             "counts_by_genus": {
                 "Anastrepha": 1,
@@ -209,6 +209,36 @@ def test_wrong_spatial_split_identity_is_rejected(tmp_path: Path):
             manifest_path=bundle_path,
             expected_authorisation_reference="owner-ref",
             expected_spatial_split_identity="different-split",
+            test_source_record_ids={"gbif:https://www.inaturalist.org/observations/123"},
+            settings=S3Settings(),
+        )
+
+
+def test_m2d_partition_s1_bundle_is_rejected_for_a_different_partition(tmp_path: Path):
+    """M2-D robustness audit: each new spatial partition must regenerate its
+    own S1 bundle. A bundle declaring one partition's real identity must be
+    rejected when a different partition's identity is expected."""
+    from s3_ecological.experiments.spatial_split import (
+        LatitudeLongitudeGridV0,
+        SplitRatios,
+        compute_split_identity,
+    )
+
+    ratios = SplitRatios(0.60, 0.20, 0.20)
+    reference_identity = compute_split_identity(
+        strategy=LatitudeLongitudeGridV0(1.0), ratios=ratios, seed=42
+    )
+    other_identity = compute_split_identity(
+        strategy=LatitudeLongitudeGridV0(0.5), ratios=ratios, seed=42
+    )
+    assert reference_identity != other_identity
+
+    bundle_path = _write_bundle(tmp_path, split_identity=reference_identity)
+    with pytest.raises(S1BundleValidationError, match="spatial split identity"):
+        validate_s1_evaluation_bundle(
+            manifest_path=bundle_path,
+            expected_authorisation_reference="owner-ref",
+            expected_spatial_split_identity=other_identity,
             test_source_record_ids={"gbif:https://www.inaturalist.org/observations/123"},
             settings=S3Settings(),
         )

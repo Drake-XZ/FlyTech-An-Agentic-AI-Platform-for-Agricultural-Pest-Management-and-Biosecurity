@@ -107,7 +107,9 @@ def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
-def _make_args(tmp_path: Path, *, output_dir: Path) -> argparse.Namespace:
+def _make_args(
+    tmp_path: Path, *, output_dir: Path, only_config_id: str | None = None
+) -> argparse.Namespace:
     tmp_path.mkdir(parents=True, exist_ok=True)
     train_manifest = tmp_path / "train_manifest.csv"
     validation_manifest = tmp_path / "validation_manifest.csv"
@@ -126,6 +128,7 @@ def _make_args(tmp_path: Path, *, output_dir: Path) -> argparse.Namespace:
         learning_rate=5e-4,
         lr_decay=0.98,
         force_cpu=True,
+        only_config_id=only_config_id,
     )
 
 
@@ -159,3 +162,28 @@ def test_fixed_seed_training_is_deterministic_on_cpu(tmp_path):
 
     assert selected_first["frozen_config_id"] == selected_second["frozen_config_id"]
     assert selected_first["checkpoint_sha256"] == selected_second["checkpoint_sha256"]
+
+
+def test_only_config_id_trains_exactly_one_configuration(tmp_path):
+    """M2-D reuses M2-C's already-selected frozen recipe on a new spatial
+    partition; it must not repeat the 4-config hyperparameter search."""
+    args = _make_args(
+        tmp_path, output_dir=tmp_path / "training", only_config_id="filts64_dateFalse"
+    )
+    selected_configuration = train_geo_prior.train(args)
+
+    assert selected_configuration["frozen_config_id"] == "filts64_dateFalse"
+
+    import json
+
+    candidate_table_path = args.output_dir / "candidate_table.json"
+    candidate_table = json.loads(candidate_table_path.read_text(encoding="utf-8"))
+    assert len(candidate_table["candidates"]) == 1
+    assert candidate_table["candidates"][0]["config_id"] == "filts64_dateFalse"
+    assert candidate_table["selected_config_id"] == "filts64_dateFalse"
+
+
+def test_only_config_id_rejects_an_unknown_config_id(tmp_path):
+    args = _make_args(tmp_path, output_dir=tmp_path / "training", only_config_id="does-not-exist")
+    with pytest.raises(ValueError, match="does-not-exist"):
+        train_geo_prior.train(args)

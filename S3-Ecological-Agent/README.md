@@ -56,8 +56,9 @@ pip install -e ".[dev]"
 Optional extras (not required for the deterministic core or its tests):
 
 ```bash
-pip install -e ".[agent]"   # adds pydantic-ai, for PydanticAIAdapter
-pip install -e ".[api]"     # adds fastapi/uvicorn, for a future HTTP API
+pip install -e ".[agent]"           # adds pydantic-ai, for PydanticAIAdapter
+pip install -e ".[api]"             # adds fastapi/uvicorn/python-multipart/pillow
+pip install -e ".[api,demo-ml]"     # also adds torch/torchvision, for the local demo server
 ```
 
 ## Run it
@@ -241,8 +242,10 @@ src/s3_ecological/
   orchestration/  run_assessment(): wires the above into one pipeline
   agent/          optional offline mock LLM provider + typed tool wrappers
                   + a guarded, optional pydantic_ai adapter
-  api/            documented stub only - no HTTP API in this prototype
-  cli.py          demo/assess/import-occurrences/prepare-geo-experiment commands
+  api/            local-only research-demo FastAPI app + static UI (below);
+                  still not a production HTTP API - see "Local research demo"
+  cli.py          demo/assess/import-occurrences/prepare-geo-experiment/
+                  serve-demo commands
   settings.py     S3Settings (Prototype Implementation Profile v0.1 defaults)
 tests/
   unit/           schemas, cleaning, distance, fusion, risk, evidence, taxonomy
@@ -328,3 +331,96 @@ geographic-only / fixed-fusion metrics are in
 `docs/model_cards/geo_prior_baseline_v0.1.md` and
 `docs/m2c_evaluation_report.md`. All training data, checkpoints, and the
 locked evaluation report remain in gitignored `data/local/`.
+
+## M2-D geographic-prior robustness, ablation, and generalisation audit
+
+M2-C's locked result remains the single primary confirmatory measurement,
+unchanged and re-run by nothing below. M2-D is a separately labelled
+robustness study that repeats the same frozen training recipe and evaluation
+protocol, unmodified, on four additional pre-declared spatial partitions
+(grid sizes 0.5°/1.0°/2.0°, seeds 7/42/123) plus a location-only (no-date)
+ablation on M2-C's own reference partition, using M2-C's own already-trained
+candidate read-only. Fixed fusion outperformed both S1-only and geographic-
+only on every partition tested, while the geographic-only method's own
+standalone accuracy varied more across partitions than either single-source
+figure alone. Full per-partition results, the ablation comparison, and an
+explicit list of conclusions this audit does not and cannot establish (no
+out-of-distribution, calibration, incursion, or biosecurity-efficacy claim;
+no new best-model or threshold selection) are in
+`docs/m2d_robustness_report.md`. As with M2-C, all training data,
+checkpoints, and evaluation reports remain in gitignored `data/local/`.
+
+## Local research demo (image + geo upload -> fused visualization)
+
+**This is a local research demo only. It is not a production system, not a
+quarantine/inspection decision tool, and not a biosecurity decision system.**
+It exists to let someone see what M2's reproduced TF4 visual model and
+geo-prior model, combined through S3's existing fixed-fusion and risk logic,
+actually output for one uploaded image plus a location - nothing more.
+
+The visual model recognizes exactly **four genera** in a closed-set softmax
+(`Anastrepha`, `Bactrocera`, `Ceratitis`, `Rhagoletis`); the four
+probabilities sum to 1, but that does not mean these are the only taxa that
+exist - there is no unknown-class detection. The geographic-prior score and
+fusion result are the same unvalidated research-reproduction results
+described above (M2-C/M2-D); this demo does not add, change, or recalibrate
+any of them. Environmental fields you type in (host, trap type, habitat,
+temperature, notes) are recorded and echoed back for context only - the
+current model does not consume them.
+
+### Install and run
+
+```bash
+pip install -e ".[api,demo-ml]"
+s3-ecological serve-demo --host 127.0.0.1 --port 8000
+```
+
+Then open `http://127.0.0.1:8000` in a browser. If the required local M2
+checkpoints (`data/local/m2/s1/training/fold-0/tf4_efficientnet_b2_best.pt`
+and `data/local/m2/geo_prior/training/filts256_dateTrue/checkpoint.pt`) are
+not present on the machine, `/api/health` reports them as unavailable and
+`/api/assess` returns a clear, friendly error rather than crashing or
+substituting a fabricated result.
+
+### What the page does
+
+1. Upload one image (PNG/JPEG/WebP; kept in memory only, never written to
+   disk) or click "use sample image" to load the bundled synthetic
+   placeholder (`api/static/sample_specimen.png` - a generated gradient, not
+   a real specimen photo).
+2. Enter a required latitude/longitude; optionally an observation date and
+   environmental notes.
+3. Click "Run Analysis." The server validates the input, runs the local TF4
+   checkpoint for closed-set visual probabilities, calls the existing S3
+   geo-prior/fusion/risk pipeline (`run_assessment`) unmodified, and returns
+   the real `AssessmentResult` plus a small explanation sidecar built only
+   from that result's own fields.
+4. The results page shows: (A) a summary card with the closed-set/research
+   framing; (B) a per-genus comparison table (visual probability, geographic
+   support or "unavailable", and the fused rerank score labeled explicitly as
+   a within-set ranking score, not a posterior); (C) a plain-language
+   explanation; (D) a collapsible evidence/limitations panel with model
+   versions, missing-evidence flags, and the fixed limitations list.
+
+No coordinates are inferred beyond what you typed, no map service is called,
+no red/green verdict is ever shown, and nothing about a missing date or
+missing location is silently filled in - the pipeline's existing safe-
+degradation path (`missing_evidence`, `review_required`) is used unchanged.
+
+### Data handling
+
+Uploaded images and submitted coordinates are held in memory for the
+duration of one request only and are never written to disk or logged; server
+logs record only a coarse (one-decimal) coordinate, the top genus, and the
+risk state. Nothing under `data/local/` is created or modified by this demo.
+
+### What this demo intentionally does not implement
+
+- No Grad-CAM or other morphological/visual explanation - the reasoning
+  panel always shows a fixed sentence stating this instead of fabricating
+  one.
+- No environmental-suitability model - `NullSuitabilityModel` (always
+  "unavailable") is used unchanged, same as the rest of S3.
+- No external API, LLM, online map service, GBIF, or ALA call of any kind.
+- No species-level confirmation, pest-quarantine conclusion, incursion
+  confirmation, or absence claim, in any wording on the page.

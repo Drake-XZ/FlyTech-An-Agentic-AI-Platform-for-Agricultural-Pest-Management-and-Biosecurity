@@ -1198,6 +1198,15 @@ OOD evaluation, calibration/OOD metrics, and expert/regulatory
 potential-incursion or false-alert evaluation remain deliberately open. The
 next proposed robustness study is recorded in `DesignSuggestionLog.md` as
 M2-D; it must not retune or overwrite the M2-C locked result.
+**2026-09-09 M2-D status note:** M2-D's pre-declared spatial-partition
+robustness/ablation audit (`docs/m2d_robustness_report.md`) is complete and
+does not change any checkbox above. Its partitions are geographic blocks,
+not temporal or local/non-local-OOD splits, so the temporal/local-OOD/
+non-local-OOD item remains unchecked; no calibration or OOD metric, and no
+expert/regulatory potential-incursion or false-alert label, was introduced,
+so those two items also remain unchecked. The already-checked items are
+unaffected: M2-D reused the same approved dataset, S1 bundle contract, and
+bootstrap-CI methodology, only across additional pre-declared partitions.
 
 ## 24. Questions That Require Project-Owner or Supervisor Confirmation
 
