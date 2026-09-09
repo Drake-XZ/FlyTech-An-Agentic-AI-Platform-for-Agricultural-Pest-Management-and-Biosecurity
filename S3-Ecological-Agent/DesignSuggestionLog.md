@@ -318,20 +318,20 @@ Append a timestamped `Work.md` entry containing implementation order, files, map
 
 #### Definition of done for Milestone 1.5
 
-- [ ] One documented command imports GBIF-, ALA-, and generic Darwin Core-compatible local tables.
-- [ ] No network or credential is required.
-- [ ] All three outputs validate against versioned schemas.
-- [ ] Occurrence and taxonomy identifiers work together end to end.
-- [ ] Generated snapshots work through existing provider Protocols and factory.
-- [ ] Evidence retains provenance, licence, checksum, and snapshot identity.
-- [ ] Fatal writes are atomic and partial row rejection is transparent.
-- [ ] The existing cleaner remains authoritative for ecological usability and duplicates.
-- [ ] Profile v0.1 scoring, fusion, thresholds, and risk semantics are unchanged.
-- [ ] Offline import-to-assessment integration passes.
-- [ ] All pre-existing tests, `ruff`, and `pyright` pass.
-- [ ] README, configuration, schemas, data card, and `Work.md` are updated.
-- [ ] No large or unapproved real dataset is committed.
-- [ ] No result is described as biological validation, absence evidence, or incursion probability.
+- [x] One documented command imports GBIF-, ALA-, and generic Darwin Core-compatible local tables.
+- [x] No network or credential is required.
+- [x] All three outputs validate against versioned schemas.
+- [x] Occurrence and taxonomy identifiers work together end to end.
+- [x] Generated snapshots work through existing provider Protocols and factory.
+- [x] Evidence retains provenance, licence, checksum, and snapshot identity.
+- [x] Fatal writes are atomic and partial row rejection is transparent.
+- [x] The existing cleaner remains authoritative for ecological usability and duplicates.
+- [x] Profile v0.1 scoring, fusion, thresholds, and risk semantics are unchanged.
+- [x] Offline import-to-assessment integration passes.
+- [x] All pre-existing tests, `ruff`, and `pyright` pass.
+- [x] README, configuration, schemas, data card, and `Work.md` are updated.
+- [x] No large or unapproved real dataset is committed.
+- [x] No result is described as biological validation, absence evidence, or incursion probability.
 
 After completion, proceed to Milestone 2 only if authorised occurrence data and compatible S1 outputs are available. Otherwise record `not_run_missing_authorised_data`; do not substitute synthetic metrics or start threshold calibration.
 
@@ -606,21 +606,21 @@ After implementation, append a timestamped entry to `WorkLog.md` describing impl
 
 #### Definition of done for this suggested increment
 
-- [ ] One offline command validates a local snapshot bundle and writes both versioned artifacts.
-- [ ] Data authorisation is explicit and never inferred.
-- [ ] The four TF4 genera are summarized and missing coverage is visible.
+- [x] One offline command validates a local snapshot bundle and writes both versioned artifacts.
+- [x] Data authorisation is explicit and never inferred.
+- [x] The four TF4 genera are summarized and missing coverage is visible.
 - [ ] Existing cleaning logic remains authoritative.
-- [ ] Spatial blocks are deterministic and never cross splits.
-- [ ] Split parameters and identities are fully recorded.
-- [ ] Missing S1 produces overall status `not_run_missing_authorised_data` with reason `missing_authorised_s1_outputs`.
-- [ ] Synthetic tests produce `engineering_fixture_only`.
-- [ ] No model is trained and no threshold is calibrated.
-- [ ] No network, external agent, API key, or LLM is required.
-- [ ] Existing scoring, fusion, risk, provider, and response behavior is unchanged.
-- [ ] All new schemas are exported and documented.
-- [ ] Tests, Ruff, Pyright, schema export, and CLI smoke tests pass.
-- [ ] README, data card, and `WorkLog.md` are updated.
-- [ ] No real dataset, generated experiment bundle, or sensitive coordinate file is committed.
+- [x] Spatial blocks are deterministic and never cross splits.
+- [x] Split parameters and identities are fully recorded.
+- [x] Missing S1 produces overall status `not_run_missing_authorised_data` with reason `missing_authorised_s1_outputs`.
+- [x] Synthetic tests produce `engineering_fixture_only`.
+- [x] No model is trained and no threshold is calibrated.
+- [x] No network, external agent, API key, or LLM is required.
+- [x] Existing scoring, fusion, risk, provider, and response behavior is unchanged.
+- [x] All new schemas are exported and documented.
+- [x] Tests, Ruff, Pyright, schema export, and CLI smoke tests pass.
+- [x] README, data card, and `WorkLog.md` are updated.
+- [x] No real dataset, generated experiment bundle, or sensitive coordinate file is committed.
 
 #### Consistency with existing design
 
@@ -748,7 +748,7 @@ Existing tests retain meaning. Record pytest/coverage, Ruff, Pyright, schema ver
 - [ ] Event-year and undated counts satisfy the descriptive time requirement.
 - [ ] Unsupported versions and malformed configuration fail safely.
 - [ ] CLI exit behavior has direct tests and documentation matches actual outcomes.
-- [ ] Existing scoring, fusion, risk, provider, and response behavior is unchanged.
+- [x] Existing scoring, fusion, risk, provider, and response behavior is unchanged.
 - [ ] No model, calibration, API, LLM, or other FlyTech agent is required.
 - [ ] Full verification passes and `WorkLog.md` receives an append-only record.
 
@@ -876,19 +876,21 @@ Evidence is recorded in `WorkLog.md` under
 optional-dependency skips, 93.83% coverage, Ruff passing, and Pyright reporting
 zero errors or warnings.
 
-#### Items intentionally left incomplete
+#### Historical items resolved and still open
 
-- [ ] `EarlyDesign.md` section 23.1's model-card item remains open because no
-  model card exists for the current heuristic geographic baseline.
-- [ ] All conditional research-validation items in `EarlyDesign.md` section
-  23.2 remain open because no approved real evaluation dataset, authorised S1
-  outputs, learned geographic model, or biological-performance evaluation has
-  been supplied or completed.
+- [x] `EarlyDesign.md` section 23.1's model-card item is now complete: the
+  TF4 visual-baseline and learned geo-prior model cards, data cards, licence
+  notes, and M2-C experiment report exist.
+- [ ] The remaining conditional research-validation items in `EarlyDesign.md`
+  section 23.2 remain open: temporal/local-OOD/non-local-OOD evaluation,
+  calibration/OOD metrics, and expert/regulatory potential-incursion or
+  false-alert metrics still lack the required protocol or labels.
 
-The current research-validation status therefore remains
-`not_run_missing_authorised_data`. This completion audit does not claim that
-Milestone 2 model training or evaluation has begun or completed.
-
+The research-validation status is now **partially complete**: the approved
+spatial-holdout scope has authorised data and S1 outputs, a learned
+geographic-prior reproduction, fixed-fusion comparison, and confidence
+intervals. It is not production validation, and the remaining open items are
+recorded for M2-D and later work.
 ### 2026-09-08 Australia/Sydney - Suggested next increment: M2-A authorised occurrence preparation and readiness run
 
 **Status:** Proposed implementation increment; not yet an approval to train a
@@ -1057,17 +1059,17 @@ committed automatically.
 
 M2-A is complete only when:
 
-- [ ] the label/taxonomy contract is recorded;
-- [ ] deterministic GBIF/ALA conversion and transparent deduplication pass;
-- [ ] the three-file Milestone 1.5 bundle validates with reconciled counts;
-- [ ] a valid, explicit experiment-authorisation declaration is present, or
+- [x] the label/taxonomy contract is recorded;
+- [x] deterministic GBIF/ALA conversion and transparent deduplication pass;
+- [x] the three-file Milestone 1.5 bundle validates with reconciled counts;
+- [x] a valid, explicit experiment-authorisation declaration is present, or
   the absence of authorisation is reported without inference;
-- [ ] the readiness artifacts are generated and reproducible;
-- [ ] every spatial block belongs to exactly one split;
-- [ ] missing S1 remains an explicit blocked overall status;
-- [ ] tests and static checks pass;
-- [ ] documentation and `WorkLog.md` are updated; and
-- [ ] no model training, fusion/risk calibration, or biological-performance
+- [x] the readiness artifacts are generated and reproducible;
+- [x] every spatial block belongs to exactly one split;
+- [x] missing S1 remains an explicit blocked overall status;
+- [x] tests and static checks pass;
+- [x] documentation and `WorkLog.md` are updated; and
+- [x] no model training, fusion/risk calibration, or biological-performance
   claim occurs in this increment.
 
 No mathematical formula, decision equation, Profile v0.1 threshold, fusion
@@ -1192,3 +1194,228 @@ validated temporary S1 bundle. Report S1-only, geographic-only, and fused
 metrics with confidence intervals where feasible; retain the closed-set and
 small-Anastrepha limitations; do not change risk thresholds or claim
 production readiness.
+
+## 2026-09-09 Australia/Sydney - Suggested next increment: M2-C geographic-prior reproduction and locked spatial evaluation
+
+**Status:** completed; the validation-only
+selection record, checkpoint freeze, and one locked test are complete. M2-A occurrence preparation and M2-B's
+validated temporary external S1 bundle now satisfy the readiness gate. This
+entry authorises no change to the S3 runtime boundary, risk rules, or fusion
+weights; it defines the next offline experiment.
+
+### Objective
+
+Reproduce the `geo_prior` research implementation against the authorised M2
+occurrence snapshot, fit it exclusively on the deterministic spatial `train`
+split, select one reproducible configuration on `validation`, then conduct one
+locked spatial `test` evaluation using the validated temporary TF4 S1 bundle.
+The outcome must separately quantify visual-only (S1), geographic-only, and
+fixed-fusion performance. It is an experimental result, not a production or
+biosecurity claim.
+
+### Required implementation order
+
+1. **Preserve boundaries and provenance.** Work outside the S3 runtime path;
+   do not change `src/s3_ecological/fusion/`, risk thresholds, public schemas,
+   or the temporary-S1 bundle. Record the exact upstream geo_prior revision,
+   software environment, hardware, source snapshot hash, training split hash,
+   taxonomy crosswalk, random seed, command line, and output-weight hashes.
+   Confirm that the existing third-party checkout is not silently edited.
+2. **Build an auditable M2-C dataset adapter.** Consume only the authorised
+   occurrence bundle and existing spatial split manifest. Retain stable
+   taxonomy IDs and split identity. Create explicit train/validation/test
+   manifests; prevent a record or spatial block from entering more than one
+   split; do not use labels or coordinates from validation/test during fitting.
+   Put real generated data and weights under gitignored `data/local/` and
+   commit only code, configuration, concise cards/reports, and harmless hashes.
+3. **Reproduce the geographic-prior method.** Implement a narrow adapter or
+   invocation around the upstream method, preserving its documented network,
+   inputs, loss, optimiser, spatial encoding and training schedule where they
+   are available. Clearly identify every unavoidable reproduction assumption;
+   never call the result the original authors' checkpoint. Include a minimal
+   CPU/offline smoke test and deterministic-seed test.
+4. **Fit train-only candidates and select on validation only.** Use a
+   predeclared, finite candidate grid. Select one configuration solely by a
+   declared validation metric (default: genus macro-F1 of geographic-only
+   ranking; report accuracy too). Save the complete candidate table, selection
+   criterion, and reason. Do not inspect test metrics while selecting.
+5. **Pre-register the final evaluation.** Freeze the selected config and
+   checkpoint hash before test inference. Revalidate the existing S1 bundle
+   against the current split identity and confirm its four-genus closed-set
+   semantics, zero declared TF4 overlap, and known Anastrepha imbalance.
+6. **Run one locked spatial test.** On the exact 942-observation S1 test
+   scope, calculate S1-only, geo-only, and fixed-fusion rankings. Use the
+   existing deterministic fusion formula and its unchanged weights; do not
+   calibrate, tune, or learn fusion/risk thresholds. Report overall and
+   per-genus accuracy, macro-F1, support, confusion matrices, and uncertainty
+   intervals where feasible (bootstrap observations with a fixed recorded
+   seed). Label results as exploratory if confidence intervals are unstable.
+7. **Audit, test, and document.** Add tests for split isolation, provenance
+   mismatch refusal, train-only fitting, fixed-fusion use, and deterministic
+   output. Run full pytest, ruff, pyright, and whitespace checks. Update a
+   geo-prior model card, a M2-C evaluation report, README only where current
+   status changes, and WorkLog with commands/results/limitations. Do not
+   commit `.gitignore`, local images, raw occurrences, weights, predictions,
+   or protected coordinates unless separately directed.
+
+### Required acceptance criteria
+
+- Training provenance, source hashes, split identity, selected configuration,
+  and checkpoint hash are recorded and reproducible.
+- No training/selection leakage: train fitting is train-only; validation is
+  selection-only; test is evaluated after configuration freeze exactly once.
+- The actual S1 bundle validates against the test identity before fusion.
+- Results include S1-only, geo-only, and fixed-fusion metrics overall and by
+  genus, with support counts and limitations; Anastrepha's small test support
+  is prominent.
+- No risk threshold, production behaviour, or biological/biosecurity efficacy
+  claim is introduced.
+- Generated sensitive artifacts remain local; committed changes pass all
+  checks and are recorded in WorkLog before any requested push.
+
+### Expected deliverables
+
+- `scripts/` adapter/training/evaluation tools and a versioned experiment
+  config; tests covering the guards above.
+- `docs/model_cards/` geographic-prior card and `docs/` M2-C report with the
+  frozen validation-selection table and locked-test results.
+- WorkLog and README status update after verification.
+
+## 2026-09-09 Australia/Sydney - M2-C implementation report
+
+Implemented against the real, already-committed M2 occurrence snapshot and
+the validated temporary TF4 S1 bundle. Full detail, exact commands, and exact
+statistics are in `WorkLog.md` ("2026-09-09 Australia/Sydney - M2-C
+geographic-prior reproduction and locked spatial-test evaluation"),
+`docs/model_cards/geo_prior_baseline_v0.1.md`, and `docs/m2c_evaluation_report.md`.
+This entry only checks off the above list against those recorded results; it
+does not restate the numbers.
+
+M2-C completion checklist, verified:
+
+- [x] boundaries and provenance preserved - `src/s3_ecological/fusion/`,
+  Prototype Implementation Profile v0.1 thresholds, public schemas, and the
+  temporary S1 bundle were not modified; the vendored `research/third_party/
+  geo_prior/` checkout was read, not edited. Upstream commit, environment,
+  hardware, source/split/taxonomy hashes, seed, exact commands, and checkpoint
+  hashes are recorded.
+- [x] an auditable M2-C dataset adapter exists -
+  `src/s3_ecological/experiments/geo_prior_dataset.py` joins only the
+  authorised occurrence snapshot and existing spatial split manifest, rejects
+  a provenance-mismatched snapshot, and exposes separate train/validation-only
+  loaders that structurally cannot accept cross-split data.
+- [x] the geographic-prior method is faithfully reproduced with explicit
+  assumptions - `scripts/geo_prior_model.py` reproduces `FCNet`/
+  `encode_loc_time`/non-user `embedding_loss`; every unavoidable reproduction
+  assumption (no user-identity loss term, date-feature exclusion counts,
+  `geo_support`-as-raw-sigmoid mapping, GPU/CPU determinism scope) is recorded
+  in the new model card; the result is never called the original authors'
+  checkpoint (none is published upstream).
+- [x] train-only fitting and validation-only selection - all four config-grid
+  candidates were fit on the spatial train split only; `filts256_dateTrue` was
+  selected purely on validation genus macro-F1 (80.41%, no tie-break needed);
+  the complete candidate table, selection rationale, and frozen checkpoint
+  hash are saved before any test-set inference occurred.
+- [x] the existing S1 bundle was revalidated against the current split
+  identity via the unmodified `validate_s1_evaluation_bundle` before the
+  locked test ran.
+- [x] one locked spatial-test run - the frozen configuration was evaluated
+  exactly once on the S1 bundle's 942-observation test scope, using the
+  unmodified fixed-fusion formula and unmodified Profile v0.1 weights; overall
+  and per-genus accuracy/macro-F1/support/confusion matrices and fixed-seed
+  bootstrap 95% confidence intervals are reported for S1-only, geo-only, and
+  fusion separately.
+- [x] tests and static checks pass - `pytest -q`: 299 passed, 2 skipped
+  (pre-existing, unrelated); `ruff check .`: clean; `pyright`: 0
+  errors/warnings/informations; `git diff --check`: clean (only the
+  pre-existing, unrelated LF/CRLF note on this file); the torch-gated offline
+  smoke test and fixed-seed reproducibility test additionally passed for real
+  under `data/local/m2/s1/venv/Scripts/python.exe -m pytest
+  tests/integration/test_geo_prior_training.py -q` (2 passed).
+- [x] documentation is updated - new `docs/model_cards/geo_prior_baseline_v0.1.md`
+  and `docs/m2c_evaluation_report.md`; `docs/model_cards/tf4_visual_baseline_v0.1.md`
+  appended with a "Next use, done (M2-C)" note; `WorkLog.md` appended; README
+  checked and left unchanged (no prior README statement became inaccurate).
+- [x] no risk threshold, fusion weight, public schema, or production behaviour
+  changed - the fixed-fusion formula and Profile v0.1 constants
+  (`fusion_epsilon=1e-6`, `fusion_weight_geo=1.0`, `fusion_weight_environment=0.0`)
+  were asserted equal to the frozen defaults and used entirely unmodified; no
+  calibration or tuning was performed against validation or test data.
+- [x] no production-readiness or biosecurity/biological-efficacy claim is
+  made anywhere in the new documentation - both new documents state this
+  explicitly, and the small-Anastrepha, iNaturalist-research-grade, and
+  closed-set-classifier limitations are restated rather than omitted.
+
+Not fabricated: the locked-test result (95.01% accuracy / 92.52% macro-F1 for
+fixed fusion, versus 89.92% / 79.27% for S1-only and 89.97% / 87.82% for
+geo-only on 927 date-usable observations) is the real, single output of
+`scripts/evaluate_geo_prior_m2c.py`'s one run against the real trained
+checkpoint and the real validated S1 bundle; it was not re-run, cherry-picked,
+or adjusted after being produced.
+
+## 2026-09-09 Australia/Sydney - Suggested next increment: M2-D robustness, ablation, and generalisation audit
+
+**Status:** proposed. M2-C's frozen configuration and its one locked 1-degree,
+seed-42 spatial-test result remain the primary confirmatory result and must
+not be reopened or re-tuned. M2-D is a separately labelled robustness study:
+it tests whether the already selected method's benefit persists under
+predeclared alternative spatial partitions and ablations. It may not select a
+new method, checkpoint architecture, fusion weight, threshold, or claim a
+better primary result after examining these outcomes.
+
+### Objective
+
+Quantify how sensitive the M2-C conclusion is to spatial partitioning,
+location/date inputs, and class support. Produce an all-runs report that shows
+where fixed fusion is stable, uncertain, or fails. Add temporal/OOD evaluation
+only where the authorised four-genus data and labels genuinely support it;
+do not manufacture unknown taxa, regulatory outcomes, or calibration labels.
+
+### Required implementation order
+
+1. **Freeze the M2-C reference.** Record its report and checkpoint hashes as
+   immutable reference artifacts. Keep the existing 1-degree, seed-42 test
+   result separate from all M2-D results. Do not overwrite it and do not use
+   any M2-D metric to revise its selected configuration.
+2. **Predeclare a finite robustness matrix before inference.** At minimum use
+   spatial grid sizes 0.5, 1.0, and 2.0 degrees and three fixed split seeds
+   (including 42 where applicable). For each partition, rebuild manifests,
+   revalidate split isolation and the S1 bundle identity, and train the frozen
+   selected geo-prior recipe on that partition's train split only. Validation
+   remains selection-free: no candidate grid or parameter change is allowed.
+3. **Run predeclared ablations.** For every feasible partition report S1-only,
+   geo-only, and unchanged fixed fusion. At least on the reference partition,
+   compare the frozen date-aware geo-prior against a location-only variant
+   without changing the fusion formula. Treat the comparison as an ablation,
+   not an opportunity to select a replacement configuration.
+4. **Analyse coverage and missingness.** Report the test support by genus,
+   date-usable versus date-missing coverage, and any S1/geo scope mismatch.
+   Preserve the visual-only fallback for unavailable geo support and quantify
+   it. Stratify results by date availability if support permits.
+5. **Add valid generalisation checks only.** If timestamps provide enough
+   non-overlapping periods, predeclare a temporal holdout and report it as a
+   new, separate experiment. Do not claim local/non-local OOD, open-set,
+   calibration, potential-incursion, or false-alert metrics until suitable
+   authorised labels and protocols exist.
+6. **Report all runs, not only favourable ones.** Provide per-run and
+   aggregate mean/range (and uncertainty where sensible) for accuracy and
+   macro-F1, plus per-genus support/F1. State whether the fusion gain versus
+   S1 is directionally consistent; do not pool incomparable test sets into a
+   single claimed confirmatory score.
+7. **Guard provenance and regression quality.** Add tests covering alternative
+   split identity, train/validation/test isolation for every partition,
+   immutable reference-artifact protection, S1 revalidation, date-missing
+   fallback, and deterministic manifests. Run full pytest, Ruff, Pyright, and
+   whitespace checks. Update a dedicated M2-D report, model card/WorkLog, and
+   the EarlyDesign research-validation checklist only when evidence exists.
+
+### Completion criteria
+
+- [ ] M2-C's locked primary result is preserved unchanged and hash-referenced.
+- [ ] The full split/ablation matrix is declared before the corresponding test inference.
+- [ ] Every run has split identity, source hashes, seed, grid size, train-only checkpoint, and S1-bundle validation evidence.
+- [ ] S1-only, geo-only, and unchanged fixed-fusion outcomes are reported for each feasible run.
+- [ ] Date-aware versus location-only ablation and date-missing fallback are reported without tuning fusion or thresholds.
+- [ ] Aggregate and per-genus robustness results include support and uncertainty/range; all runs are retained.
+- [ ] Any temporal experiment is truly non-overlapping and separately labelled; unsupported OOD/calibration/regulatory metrics remain explicitly open.
+- [ ] Tests, static checks, reports, and WorkLog pass/update; real generated artifacts remain local and `.gitignore` is not committed.

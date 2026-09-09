@@ -1171,7 +1171,7 @@ The first fixture-backed S3 engineering prototype is complete only when all of t
 - ✅ Import-boundary checks show that the core does not depend on PydanticAI, FastAPI, or an external LLM SDK.
 - ✅ The implementation contains no unexplained magic thresholds, duplicated scoring logic, provider objects leaking into domain logic, or vague permanent TODOs.
 - ✅ A README explains setup, demo commands, configuration, data acquisition, and limitations.
-- [ ] Relevant data cards, model cards, licence notes, and experiment records exist.
+- [x] Relevant data cards, model cards, licence notes, and experiment records exist.
 - ✅ Versioned interface schemas and examples exist for all external-module boundaries used by S3.
 - ✅ Tests pass with mocks or fixtures when S1, S2, S4, S5, S6, and the orchestrator are unavailable.
 - ✅ No non-S3 agent logic, orchestrator routing logic, application logic, or expert-workflow implementation has been added to the S3 repository.
@@ -1180,16 +1180,24 @@ The first fixture-backed S3 engineering prototype is complete only when all of t
 
 These items become required only after the project owner or supervisor supplies or approves suitable data, S1 outputs, labels, and evaluation scope. Their absence must not block completion of the engineering prototype.
 
-- [ ] The evaluation dataset has an approved licence, provenance, checksum, taxonomy mapping, and split manifest.
-- [ ] Real or authorised recorded S1 candidate outputs are available; synthetic visual probabilities are not used to claim identification performance.
-- [ ] A spatial holdout evaluation compares S1-only, geographic-only, and S1-plus-S3 results.
+- [x] The evaluation dataset has an approved licence, provenance, checksum, taxonomy mapping, and split manifest.
+- [x] Real or authorised recorded S1 candidate outputs are available; synthetic visual probabilities are not used to claim identification performance.
+- [x] A spatial holdout evaluation compares S1-only, geographic-only, and S1-plus-S3 results.
 - [ ] Temporal, local-OOD, and non-local-OOD splits are evaluated where the available data support them.
 - [ ] Calibration and OOD metrics are reported only where valid labels permit.
 - [ ] Potential-incursion and false-alert metrics use expert-validated or authorised regulatory labels rather than inferred public-record absence.
-- [ ] Confidence intervals or repeated-split variation are reported where sample size permits.
-- [ ] The evaluation report clearly separates engineering fixture results from biological research results.
+- [x] Confidence intervals or repeated-split variation are reported where sample size permits.
+- [x] The evaluation report clearly separates engineering fixture results from biological research results.
 
 If these inputs are unavailable, record the research-validation status as `not_run_missing_authorised_data` with the missing dependency; do not fabricate data, labels, metrics, or completion evidence.
+**2026-09-09 M2 status note:** The approved M2 occurrence dataset, authorised
+external S1 bundle, model/data cards, spatial split, one locked spatial
+comparison, bootstrap confidence intervals, and research/engineering
+separation now satisfy the checked items above. Temporal/local-OOD/non-local-
+OOD evaluation, calibration/OOD metrics, and expert/regulatory
+potential-incursion or false-alert evaluation remain deliberately open. The
+next proposed robustness study is recorded in `DesignSuggestionLog.md` as
+M2-D; it must not retune or overwrite the M2-C locked result.
 
 ## 24. Questions That Require Project-Owner or Supervisor Confirmation
 

@@ -311,5 +311,20 @@ strictly an offline research utility, not an S3 runtime provider and not the
 original paper checkpoint. Its images, weights, prediction outputs, and
 readiness artifacts remain in gitignored `data/local/`; the committed
 provenance, validation logic, and limitations are in
-`docs/model_cards/tf4_visual_baseline_v0.1.md`. The gate being ready does not
-mean the geographic-prior or fusion evaluation has been performed.
+`docs/model_cards/tf4_visual_baseline_v0.1.md`.
+
+## M2-C geographic-prior reproduction and locked spatial-test evaluation
+
+The geographic-prior (Mac Aodha, Cole & Perona) presence-only model has now
+been reproduced, fit on the spatial `train` split only, and selected on the
+spatial `validation` split only (`scripts/train_geo_prior.py`); the frozen
+configuration was then evaluated exactly once on the locked spatial `test`
+split via the unmodified fixed-fusion formula
+(`src/s3_ecological/fusion/soft_fusion.py`, Prototype Implementation Profile
+v0.1 constants unchanged). This is a single, experimental research
+measurement, not a production-readiness or biosecurity/biological-efficacy
+claim. Full method, frozen configuration, and separately-reported S1-only /
+geographic-only / fixed-fusion metrics are in
+`docs/model_cards/geo_prior_baseline_v0.1.md` and
+`docs/m2c_evaluation_report.md`. All training data, checkpoints, and the
+locked evaluation report remain in gitignored `data/local/`.

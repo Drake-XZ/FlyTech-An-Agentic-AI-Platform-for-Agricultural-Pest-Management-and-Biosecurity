@@ -2075,3 +2075,202 @@ train only, select settings on validation only, then perform one locked test
 run with the validated bundle. Keep S1 external, preserve the leakage audit,
 report S1-only / geographic-only / fused outcomes separately, and do not
 calibrate fusion or risk thresholds from the test set.
+
+## 2026-09-09 Australia/Sydney - M2-C geographic-prior reproduction and locked spatial-test evaluation
+
+### Scope and boundaries
+
+Implemented the M2-C increment authorised in `DesignSuggestionLog.md`
+("2026-09-09 ... Suggested next increment: M2-C"). `src/s3_ecological/fusion/`,
+Prototype Implementation Profile v0.1 thresholds, public schemas, and the
+existing temporary TF4 S1 bundle were not modified. The vendored
+`research/third_party/geo_prior/` checkout (Mac Aodha, Cole & Perona;
+commit `257dc7e30f3cc6bf02fbec55ee878724d077fe61`, no licence file, no
+published pretrained weight) was read for reference only; the actual
+reproduction lives in a new, self-contained `scripts/geo_prior_model.py` that
+is never imported by `src/s3_ecological`.
+
+### New code
+
+- `src/s3_ecological/experiments/geo_prior_dataset.py` (torch-free): joins the
+  spatial split manifest with the occurrence and taxonomy snapshots, verifies
+  the manifest's declared snapshot SHA-256 against what is actually loaded,
+  and exposes `load_train_records()` / `load_validation_records()` /
+  `load_split_records()` - each returns only its own split, and
+  `load_split_records()` explicitly refuses `split=TEST`. An optional
+  `require_event_date` filter supports date-aware configs.
+- `src/s3_ecological/experiments/geo_prior_metrics.py` (torch-free): pure-
+  Python confusion matrix / accuracy / per-class precision-recall-F1-support /
+  macro-F1 / fixed-seed observation-level bootstrap confidence interval, plus
+  `fuse_predictions()` - a thin wrapper that builds
+  `fusion.soft_fusion.FusionInput` candidates and calls `fuse()` unmodified.
+  The frozen Profile v0.1 fusion constants are asserted, not re-derived.
+- `scripts/geo_prior_model.py` (torch): `FCNet`, `encode_loc_time`, and the
+  non-user `full_loss` variant of `embedding_loss`, adapted from the vendored
+  upstream. No user/recorder-ID field exists anywhere in
+  `RawOccurrenceRecord`, so the paper's user-aware loss term cannot be
+  reproduced - documented as a hard reproduction limitation.
+- `scripts/prepare_geo_prior_dataset.py` (torch-free CLI): writes gitignored
+  `data/local/m2/geo_prior/dataset/{train,validation}_manifest.csv` and a
+  `dataset_report.json`.
+- `scripts/train_geo_prior.py` (torch): trains the 2x2 config grid
+  (`num_filts in {64,256}` x `use_date_feats in {False,True}`) on train-only
+  data, seed 42, Adam `lr=5e-4`/`lr_decay=0.98`, class-balanced sampler,
+  early-stop patience 40; selects the winning config purely on validation
+  genus macro-F1; writes `candidate_table.json` and
+  `selected_configuration.json` under gitignored
+  `data/local/m2/geo_prior/training/`.
+- `scripts/evaluate_geo_prior_m2c.py` (torch): revalidates the S1 bundle via
+  the unmodified `validate_s1_evaluation_bundle` against the current spatial
+  split identity, loads the frozen checkpoint, computes per-record geo-support
+  from the S1 bundle's own `location`/`observed_at` fields, builds S1-only /
+  geo-only / fixed-fusion predictions (via `fuse_predictions`, unmodified
+  `soft_fusion.fuse` under the hood), and writes the one locked-test report to
+  gitignored `data/local/m2/geo_prior/evaluation/m2c_locked_test_report.json`.
+
+### Real run: validation-set selection
+
+Real commands (from `S3-Ecological-Agent`):
+
+```powershell
+python scripts/prepare_geo_prior_dataset.py
+data/local/m2/s1/venv/Scripts/python.exe scripts/train_geo_prior.py
+```
+
+All four candidates, real results (validation split only, spatial split
+identity `59014aec1786e0cb7d4c2d9db0a091fa8c0a7a797c918185516d41d81f670183`):
+
+| config_id | num_filts | use_date_feats | best_epoch | val accuracy | val macro-F1 |
+| --- | --- | --- | --- | --- | --- |
+| `filts64_dateFalse` | 64 | false | 101 | 88.74% | 77.94% |
+| `filts64_dateTrue` | 64 | true | 171 | 85.94% | 70.43% |
+| `filts256_dateFalse` | 256 | false | 65 | 89.36% | 80.10% |
+| `filts256_dateTrue` (winner) | 256 | true | 65 | 90.54% | 80.41% |
+
+`filts256_dateTrue` won on validation macro-F1 with no tie-break needed.
+Frozen checkpoint SHA-256:
+`952d81008184f18888d22de54b3557f7c5429b35ed28782aabd6914707e61086`. Training
+used `device=cuda` (`NVIDIA GeForce RTX 4060 Laptop GPU`, `torch=2.8.0+cu128`)
+for speed; PyTorch documents CuBLAS as not bit-exact reproducible even under
+`torch.use_deterministic_algorithms(True)`, so this GPU-trained checkpoint's
+exact bit-reproducibility run-to-run is not claimed - only the training
+procedure and seeding are, and that determinism claim is verified separately
+on CPU (see Tests below). A date-aware config's stricter usable-date filter
+excluded 33 of 11,436 train records and 27 of 3,242 validation records (more
+than the plain "no `event_date` at all" counts of 4/9 - the remainder are
+non-empty but partial/unparseable dates); the winning config's
+`train_count=11,403` / `validation_count=3,215` reflect that filter.
+
+### Real run: one locked spatial-test evaluation
+
+Real command:
+
+```powershell
+data/local/m2/s1/venv/Scripts/python.exe scripts/evaluate_geo_prior_m2c.py
+```
+
+Run exactly once against the frozen checkpoint and the already-validated S1
+bundle (`s1_bundle_manifest_sha256`
+`017014a2fe218249739908130d93343ca0b16c8100120eba2c1a4088332ad289`), using
+the unmodified fixed-fusion formula and unmodified Profile v0.1 constants
+(`fusion_epsilon=1e-6`, `fusion_weight_geo=1.0`,
+`fusion_weight_environment=0.0`). Fixed-seed (42) 2,000-resample bootstrap
+95% confidence intervals reported for accuracy and macro-F1.
+
+| Method | Observations | Accuracy | Macro-F1 |
+| --- | --- | --- | --- |
+| S1-only | 942 | 89.92% (CI 87.90-91.93%) | 79.27% (CI 74.90-83.55%) |
+| Geo-only | 927 | 89.97% (CI 88.03-91.80%) | 87.82% (CI 84.64-90.59%) |
+| Fixed fusion | 942 | 95.01% (CI 93.63-96.39%) | 92.52% (CI 89.74-95.03%) |
+
+Geo-only excludes 15 of 942 observations lacking a fully usable date, since
+the frozen configuration is date-aware; those 15 still fuse (visual-only in
+effect, since `soft_fusion.fuse` only omits the geo term when `geo_support is
+None`, never substituting zero). Per-genus support, precision/recall/F1, and
+full confusion matrices for all three methods are in
+`docs/m2c_evaluation_report.md`. Anastrepha's F1 rose from 46.15% (S1-only)
+to 84.85% (fusion) on its small 31-observation support - the largest
+per-genus change, and also the highest-variance result given that support
+size.
+
+### Tests and static checks
+
+- Added `tests/unit/test_geo_prior_dataset.py` (10 tests): split-isolation
+  (disjoint train/validation loaders), a `TEST`-split refusal, date-required
+  filtering, occurrence/taxonomy provenance-mismatch rejection, ambiguous-
+  join rejection, missing-join rejection, taxon-id-mismatch rejection, and a
+  missing-manifest-file error.
+- Added `tests/unit/test_geo_prior_metrics.py` (8 tests): frozen Profile v0.1
+  fusion-constant pin, hand-computed confusion matrix/accuracy/per-class
+  metrics/macro-F1, an empty-class no-crash case, fixed-seed bootstrap-CI
+  determinism (accuracy and macro-F1), a hand-computed fixed-fusion log-linear
+  score/softmax/tie-break check, and an absent-`geo_support`-never-
+  substituted-zero-or-one check.
+- Added `tests/integration/test_geo_prior_training.py` (2 tests,
+  `pytest.importorskip("torch")`-gated): a tiny synthetic 12-train/4-
+  validation-record CPU smoke test (finite loss, in-range validation
+  accuracy/macro-F1 across all four grid configs), and a fixed-seed CPU
+  determinism test (identical `frozen_config_id` and `checkpoint_sha256`
+  across two independent runs with `--force-cpu`).
+- `python -m pytest -q`: 299 passed, 2 skipped (pre-existing, unrelated
+  `pydantic_ai` optional-dependency skips). Note: this session's plain
+  `python` resolves to the Anaconda base interpreter, which unexpectedly has
+  `torch` installed globally - so the new torch-gated integration tests ran
+  for real here too, rather than auto-skipping as the base `pyproject.toml`
+  (no `torch` dependency) would normally imply. This is reported honestly
+  rather than assuming the expected skip behaviour occurred.
+- `data/local/m2/s1/venv/Scripts/python.exe -m pytest
+  tests/integration/test_geo_prior_training.py -q`: 2 passed - the dedicated
+  S1 venv (torch 2.8.0+cu128) confirms the same result independently.
+- `python -m ruff check .`: all checks passed (after fixing line-length and
+  import-order issues introduced by this increment's new files).
+- `python -m pyright`: 0 errors, 0 warnings, 0 informations (after fixing an
+  `Optional`-narrowing-in-lambda issue and a `set[str | None]` return-type
+  mismatch in `scripts/evaluate_geo_prior_m2c.py`, and two pydantic strict-
+  type issues - a string literal passed where `datetime` was required, and a
+  string literal passed where the `GeographicScopeMode` enum was required -
+  in the new dataset-adapter test fixture).
+- `git diff --check`: clean (only the pre-existing, unrelated LF/CRLF note on
+  `DesignSuggestionLog.md`).
+
+### Files added or changed
+
+- Added `src/s3_ecological/experiments/geo_prior_dataset.py` and
+  `src/s3_ecological/experiments/geo_prior_metrics.py`.
+- Added `scripts/geo_prior_model.py`, `scripts/prepare_geo_prior_dataset.py`,
+  `scripts/train_geo_prior.py`, `scripts/evaluate_geo_prior_m2c.py`.
+- Added `tests/unit/test_geo_prior_dataset.py`,
+  `tests/unit/test_geo_prior_metrics.py`,
+  `tests/integration/test_geo_prior_training.py`.
+- Added `docs/model_cards/geo_prior_baseline_v0.1.md` and
+  `docs/m2c_evaluation_report.md`.
+- Updated `docs/model_cards/tf4_visual_baseline_v0.1.md` with a "Next use,
+  done (M2-C)" note.
+- Updated `DesignSuggestionLog.md` with the M2-C implementation report entry.
+- README.md checked; its M2 status line was already accurate for a completed
+  M2-B/pending-M2-C state and needed no change beyond what M2-C's own new
+  documents now record, so it was left unchanged.
+
+### Mathematical-formula and parameter impact
+
+No S3 mathematical formula, decision equation, Prototype Implementation
+Profile v0.1 threshold, fusion weight, risk-state precedence rule, public
+schema, provider behaviour, or runtime interface changed. `fuse()` and every
+Profile v0.1 numeric default (`fusion_epsilon=0.000001`,
+`fusion_weight_geo=1.0`, `fusion_weight_environment=0.0`, and all others) were
+used entirely unmodified and asserted equal to their frozen defaults in
+`tests/unit/test_geo_prior_metrics.py`. The geographic-prior model's own
+config grid, training schedule, and `geo_support` mapping are experiment
+parameters for a new, external-to-fusion model, recorded here and in the new
+model card separately from any S3 inference/risk threshold; no calibration or
+tuning of any kind used validation or test data beyond the single declared
+validation-set config-selection step.
+
+### Not a production or biosecurity claim
+
+The reported metrics are a single locked-test measurement on 942 (or 927,
+for geo-only) synthetic-scope-free but small observations. No statement in
+the new documentation, this log entry, or the underlying code claims
+production readiness or a biosecurity/biological-efficacy result; the small-
+Anastrepha, iNaturalist-research-grade-label, and closed-set-classifier
+limitations are restated in both new documents.
